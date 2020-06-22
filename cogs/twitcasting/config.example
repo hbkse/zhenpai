@@ -1,0 +1,5 @@
+# Make an application at https://twitcasting.tv/developer.php to get the OAUTH credentials below
+
+CLIENT_ID = "PLACE_CLIENT_ID_HERE"
+CLIENT_SECRET = "PLACE_CLIENT_SECRET_HERE"
+ACCESS_TOKEN = "PLACE_ACCESS_TOKEN_HERE"

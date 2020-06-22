@@ -1,13 +1,16 @@
-import discord
+from cogs import webserver
 from discord.ext import commands
+
 import config
+import discord
 import logging
 
 bot = commands.Bot(command_prefix='z!')
 
 extensions = [
     'cogs.misc',
-    'cogs.tagging'
+    'cogs.tagging',
+    'cogs.twitcasting'
 ]
 
 
@@ -34,5 +37,7 @@ if __name__ == '__main__':
     for ext in extensions:
         bot.load_extension(ext)
         logger.debug('Loaded extension: %s', ext)
+
+    webserver.start_server()
 
 bot.run(config.bot_token)
