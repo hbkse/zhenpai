@@ -1,4 +1,5 @@
 import abc
+import logging
 import pickle
 import redis
 from os import path
@@ -107,6 +108,7 @@ class BaseKeyValueStore(metaclass=abc.ABCMeta):
 
 class DictKeyValueStore(BaseKeyValueStore):
     def __init__(self):
+        self.logger = logging.getLogger('zhenpai.tagging')
         self.kvstore: Dict[str, Dict[str, TaggingItem]] = {}  # TODO: load from a pickle file, not sure when we save though
         self.load()
 
@@ -153,14 +155,14 @@ class DictKeyValueStore(BaseKeyValueStore):
                 saved_kvstore = pickle.load(handle)
                 self.from_dict(saved_kvstore)
         except (IOError, OSError, EOFError) as e:
-            print("Warn: could not load tags from disk")
+            self.logger.warning("Could not load local data. %s", e)
 
     def save(self):
         try:
             with open(path.join(constants.DB_PATH, constants.DB_FILENAME), 'wb') as handle:
                 pickle.dump(self.to_dict(), handle)
         except (IOError, OSError) as e:
-            print("Fatal: could not save tags")
+            self.logger.error("Could not save current session's tags to disk. %s", e)
 
     def to_dict(self):
         dict_ = {}

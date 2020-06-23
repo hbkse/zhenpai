@@ -1,5 +1,5 @@
 import atexit
-import re
+import logging
 from pathlib import Path
 from discord import File
 from discord.ext import commands
@@ -23,6 +23,7 @@ class Tagging(commands.Cog):
     def __init__(self, bot):
         Path(constants.IMAGES_PATH).mkdir(parents=True, exist_ok=True)
         Path(constants.DB_PATH).mkdir(parents=True, exist_ok=True)
+        self.logger = logging.getLogger('zhenpai.tagging')
         self.bot = bot
         self.lookup = DictKeyValueStore()
         # self.lookup = RedisKeyValueStore(ip='localhost', port=6379)
@@ -52,12 +53,14 @@ class Tagging(commands.Cog):
             Path(server_path).mkdir(parents=True, exist_ok=True)
             local_url = path.join(server_path, attachment.filename)
             await attachment.save(local_url)
+            self.logger.info("Saved image to %s", local_url)
             self.lookup[key] = TaggingItem(name=command_name,
                                            url=attachment.url,
                                            local_url=local_url,
                                            creator_id=ctx.message.author.id)
             await ctx.send(
                 content='Successfully created ' + command_name + ' linked to ' + self.lookup[key].local_url)
+            self.logger.info('Successfully created %s linked to %s', command_name, self.lookup[key].local_url)
         elif tag_name and link:
                 pass
                 # TODO: sanitize and check that the second argument is an URL.
