@@ -1,10 +1,14 @@
 from cogs import webserver
 from discord.ext import commands
 import discord
-import logging
+import logging.config
+from pathlib import Path
+import yaml
 import os
 
 bot = commands.Bot(command_prefix='z!')
+
+LOGS_DIRECTORY = 'data/logs/'
 
 extensions = [
     'cogs.misc',
@@ -28,8 +32,8 @@ async def on_command_error(ctx, error):
 
 @bot.event
 async def on_ready():
-    print('Logged in as: ', bot.user)
-    print('Discord.py version: ', discord.__version__)
+    logger.info('Logged in as: %s', bot.user)
+    logger.info('Discord.py version: %s', discord.__version__)
 
 
 @bot.event
@@ -37,18 +41,16 @@ async def on_message(message):
     await bot.process_commands(message)
 
 if __name__ == '__main__':
-    logger = logging.getLogger('zhenpai')
-    logger.setLevel(logging.DEBUG)
+    Path(LOGS_DIRECTORY).mkdir(parents=True, exist_ok=True)
+    with open('logging.conf.yaml', 'rt') as f:
+        config = yaml.safe_load(f.read())
+    logging.config.dictConfig(config)
 
-    console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.DEBUG)
-    formatter = logging.Formatter(fmt='[%(asctime)s] %(name)s: %(levelname)s - %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p')
-    console_handler.setFormatter(formatter)
-    logger.addHandler(console_handler)
+    logger = logging.getLogger('zhenpai')
 
     for ext in extensions:
         bot.load_extension(ext)
-        logger.debug('Loaded extension: %s', ext)
+        logger.info('Loaded extension: %s', ext)
 
     webserver.start_server()
 

@@ -1,8 +1,8 @@
 config.py
 __pycache__/
 venv/
-images/
-db/
+data/*
 .idea/
+*.log
 *.db
 *.pyc
