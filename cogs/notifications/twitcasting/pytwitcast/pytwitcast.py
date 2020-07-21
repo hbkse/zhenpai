@@ -46,7 +46,7 @@ class TwitcastAPI:
         args = dict(params=params)
         if payload:
             args['data'] = json.dumps(payload)
-        if json:
+        if json_data:
             args['json'] = json_data
 
         _headers = self._generate_auth(auth)

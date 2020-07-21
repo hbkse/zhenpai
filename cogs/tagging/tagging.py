@@ -86,6 +86,9 @@ class Tagging(commands.Cog):
                 self.db.add_tag(tag)
                 self.db.commit()
                 self.lookup.save()
+                await ctx.send(
+                    content='Successfully created ' + command_name + ' linked to ' + self.lookup[key].local_url)
+                self.logger.info('Successfully created %s linked to %s', command_name, self.lookup[key].local_url)
             elif link:
                 filename = link.split('/')[-1].replace(" ", '_')
                 local_url = os.path.join(server_path, filename)
@@ -112,12 +115,11 @@ class Tagging(commands.Cog):
                     self.db.add_tag(tag)
                     self.db.commit()
                     self.lookup.save()
+                    await ctx.send(
+                        content='Successfully created ' + command_name + ' linked to ' + self.lookup[key].local_url)
+                    self.logger.info('Successfully created %s linked to %s', command_name, self.lookup[key].local_url)
                 else:
                     await ctx.send('Failed to download file from link.')
-
-            await ctx.send(
-                content='Successfully created ' + command_name + ' linked to ' + self.lookup[key].local_url)
-            self.logger.info('Successfully created %s linked to %s', command_name, self.lookup[key].local_url)
         else:
             await ctx.send(f'```{ctx.command.help}```')
 
@@ -171,10 +173,10 @@ class Tagging(commands.Cog):
                     embed = Embed.from_dict(embed_dict)
                     await message.channel.send(embed=embed)
                     # await message.channel.send(file=File(self.lookup[key].local_url))
-                    self.mark_usage(key)
+                    self._mark_usage(key)
                     break  # only allow one match per message
 
-    def mark_usage(self, tag):
+    def _mark_usage(self, tag_name: str, user_id: str):
         pass
 
     def cleanup(self):
