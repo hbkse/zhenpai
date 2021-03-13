@@ -7,9 +7,10 @@ from . import Base
 from . import constants
 from database.tagging._tags import _DatabaseTags
 from database.twitcasting._subscription import _DatabaseSubscriptions
+from ..cogs.reminders.schemas._reminders import _DatabaseReminders
 
 
-class Database(_DatabaseTags, _DatabaseSubscriptions):
+class Database(_DatabaseTags, _DatabaseSubscriptions, _DatabaseReminders):
     def __init__(self):
         if not os.path.exists(constants.DB_FOLDER_NAME):
             os.makedirs(constants.DB_FOLDER_NAME)

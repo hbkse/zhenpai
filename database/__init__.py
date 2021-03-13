@@ -5,6 +5,3 @@ Base = declarative_base()
 from .database import Database
 
 DB = Database()
-
-
-
