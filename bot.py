@@ -6,14 +6,17 @@ from pathlib import Path
 import yaml
 import os
 
-bot = commands.Bot(command_prefix='z!')
+intents = discord.Intents.default()
+intents.presences = True
+intents.members = True
+bot = commands.Bot(command_prefix='z!', intents=intents)
 
 LOGS_DIRECTORY = 'data/logs/'
 
 extensions = [
-    #'cogs.misc',
-    #'cogs.tagging',
-    #'cogs.twitcasting'
+    'cogs.misc',
+    'cogs.tagging',
+    'cogs.twitcasting'
     'cogs.spotify'
 ]
 
