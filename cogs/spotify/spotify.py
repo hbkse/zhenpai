@@ -36,10 +36,16 @@ class Spotify(commands.Cog):
                     self.guild_id_to_role_dict[guild.id] = role
                     break
             if guild.id not in self.guild_id_to_role_dict:
-                self.guild_id_to_role_dict[guild.id] = await guild.create_role(name=SPOTIFY_ROLE_NAME, hoist=True)
+                try: 
+                    self.guild_id_to_role_dict[guild.id] = await guild.create_role(name=SPOTIFY_ROLE_NAME, hoist=True)
+                except:
+                    print("failed to create role in {}".format(guild))
+        print(self.guild_id_to_role_dict)
 
         while not self.bot.is_closed():
             for guild in self.guilds:
+                if guild.id not in self.guild_id_to_role_dict:
+                    continue
                 spotify_role = self.guild_id_to_role_dict[guild.id]
                 for member in guild.members:
                     if any(activity.type == ActivityType.listening for activity in member.activities):
