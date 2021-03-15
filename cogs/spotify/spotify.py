@@ -8,7 +8,7 @@ from discord import ActivityType
 import asyncio
 
 SPOTIFY_ROLE_NAME = "now_playing"
-BACKGROUND_TASK_LOOP_SECONDS = 20
+BACKGROUND_TASK_LOOP_SECONDS = 15
 
 class Spotify(commands.Cog):
     """
@@ -47,7 +47,8 @@ class Spotify(commands.Cog):
                         except:
                             await self.bot.get_user(self.bot.owner_id).send("bot failed to add role. guild: {} member: {}".format(guild, member))
                     else:
-                        try:                            await member.remove_roles(spotify_role)
+                        try:
+                            await member.remove_roles(spotify_role)
                         except:
                             await self.bot.get_user(self.bot.owner_id).send("bot failed to remove role. guild: {} member: {}".format(guild, member))
             await asyncio.sleep(BACKGROUND_TASK_LOOP_SECONDS)

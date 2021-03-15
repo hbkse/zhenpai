@@ -16,7 +16,7 @@ LOGS_DIRECTORY = 'data/logs/'
 extensions = [
     'cogs.misc',
     'cogs.tagging',
-    'cogs.twitcasting'
+    #'cogs.twitcasting',
     'cogs.spotify'
 ]
 
@@ -37,6 +37,7 @@ async def on_command_error(ctx, error):
 async def on_ready():
     logger.info('Logged in as: %s', bot.user)
     logger.info('Discord.py version: %s', discord.__version__)
+    logger.info('Visible guilds: %s', bot.guilds)
 
 
 @bot.event
