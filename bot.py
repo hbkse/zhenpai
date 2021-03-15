@@ -6,16 +6,19 @@ from pathlib import Path
 import yaml
 import os
 
-bot = commands.Bot(command_prefix='z!')
+intents = discord.Intents.default()
+intents.presences = True
+intents.members = True
+bot = commands.Bot(command_prefix='z!', intents=intents)
 
 LOGS_DIRECTORY = 'data/logs/'
 
 extensions = [
     'cogs.misc',
     'cogs.tagging',
-    'cogs.twitcasting'
+    'cogs.twitcasting',
+    'cogs.spotify'
 ]
-
 
 @bot.event
 async def on_command_error(ctx, error):
@@ -34,6 +37,7 @@ async def on_command_error(ctx, error):
 async def on_ready():
     logger.info('Logged in as: %s', bot.user)
     logger.info('Discord.py version: %s', discord.__version__)
+    logger.info('Visible guilds: %s', bot.guilds)
 
 
 @bot.event
