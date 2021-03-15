@@ -16,7 +16,7 @@ LOGS_DIRECTORY = 'data/logs/'
 extensions = [
     'cogs.misc',
     'cogs.tagging',
-    #'cogs.twitcasting',
+    'cogs.twitcasting',
     'cogs.spotify'
 ]
 

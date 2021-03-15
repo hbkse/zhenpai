@@ -27,7 +27,8 @@ class Spotify(commands.Cog):
         self.guilds = self.bot.guilds
         '''
         It would probably be better to check if the role hasn't been created yet 
-        by storing the role id in db, instead of checking by name
+        by storing the role id in db, instead of checking by name, especially because 
+        role names can be the same
         '''
         for guild in self.guilds:
             for role in guild.roles:
