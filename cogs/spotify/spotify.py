@@ -40,7 +40,6 @@ class Spotify(commands.Cog):
                     self.guild_id_to_role_dict[guild.id] = await guild.create_role(name=SPOTIFY_ROLE_NAME, hoist=True)
                 except:
                     print("failed to create role in {}".format(guild))
-        print(self.guild_id_to_role_dict)
 
         while not self.bot.is_closed():
             for guild in self.guilds:
