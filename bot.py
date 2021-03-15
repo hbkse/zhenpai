@@ -11,11 +11,11 @@ bot = commands.Bot(command_prefix='z!')
 LOGS_DIRECTORY = 'data/logs/'
 
 extensions = [
-    'cogs.misc',
-    'cogs.tagging',
-    'cogs.twitcasting'
+    #'cogs.misc',
+    #'cogs.tagging',
+    #'cogs.twitcasting'
+    'cogs.spotify'
 ]
-
 
 @bot.event
 async def on_command_error(ctx, error):
