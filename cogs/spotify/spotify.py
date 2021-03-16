@@ -51,7 +51,6 @@ class Spotify(commands.Cog):
                 filtered_members = [m for m in guild.members if m.status != Status.offline and not m.bot]
                 for member in filtered_members:
                     types = [a.type for a in member.activities]
-                    self.logger.info(f"member {member}")
                     if ActivityType.listening in types and ActivityType.playing not in types:
                         try:
                             if spotify_role not in member.roles:
