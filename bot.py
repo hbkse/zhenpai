@@ -5,11 +5,12 @@ import logging.config
 from pathlib import Path
 import yaml
 import os
+from config import bot_token, owner_id
 
 intents = discord.Intents.default()
 intents.presences = True
 intents.members = True
-bot = commands.Bot(command_prefix='z!', intents=intents)
+bot = commands.Bot(command_prefix='z!', intents=intents, owner_id=owner_id)
 
 LOGS_DIRECTORY = 'data/logs/'
 
@@ -61,5 +62,4 @@ if __name__ == '__main__':
 if os.environ.get('DISCORD_BOT_TOKEN'):
     bot.run(os.environ['DISCORD_BOT_TOKEN'])
 else:
-    import config
-    bot.run(config.bot_token)
+    bot.run(bot_token)
