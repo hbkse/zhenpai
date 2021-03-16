@@ -13,6 +13,7 @@ env:
   DOCKER_TAR_NAME: latest.tar
   DOCKER_CONTAINER_NAME: zhenpai
   DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+  OWNER_ID: ${{ secrets.OWNER_ID }}
   TWITCAST_CLIENT_ID: ${{ secrets.TWITCAST_CLIENT_ID }}
   TWITCAST_CLIENT_SECRET: ${{ secrets.TWITCAST_CLIENT_SECRET }}
   TWITCAST_ACCESS_TOKEN: ${{ secrets.TWITCAST_ACCESS_TOKEN }}
@@ -37,6 +38,7 @@ jobs:
       run: |-
         sh deployScripts/addEnvToDockerfile.sh \
         DISCORD_BOT_TOKEN \
+        OWNER_ID \
         TWITCAST_CLIENT_ID \
         TWITCAST_CLIENT_SECRET \
         TWITCAST_ACCESS_TOKEN
