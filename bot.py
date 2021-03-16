@@ -5,14 +5,15 @@ import logging.config
 from pathlib import Path
 import yaml
 import os
-import config as secrets
-
-owner_id = os.environ.get('OWNER_ID') or secrets.owner_id
 
 intents = discord.Intents.default()
 intents.presences = True
 intents.members = True
-bot = commands.Bot(command_prefix='z!', intents=intents, owner_id=owner_id)
+if os.environ.get('OWNER_ID'):
+    bot = commands.Bot(command_prefix='z!', intents=intents, owner_id=os.environ.get('OWNER_ID'))
+else:
+    import config
+    bot = commands.Bot(command_prefix='z!', intents=intents, owner_id=config.owner_id)
 
 LOGS_DIRECTORY = 'data/logs/'
 
@@ -64,4 +65,5 @@ if __name__ == '__main__':
 if os.environ.get('DISCORD_BOT_TOKEN'):
     bot.run(os.environ['DISCORD_BOT_TOKEN'])
 else:
-    bot.run(secrets.bot_token)
+    import config
+    bot.run(config.bot_token)
