@@ -43,24 +43,27 @@ class Spotify(commands.Cog):
                     self.logger.info("failed to create role in {}".format(guild))
 
         # how very ugly... :)
-        while not self.bot.is_closed():
-            for guild in self.guilds:
-                if guild.id not in self.guild_id_to_role_dict:
-                    continue
-                spotify_role = self.guild_id_to_role_dict[guild.id]
-                filtered_members = [m for m in guild.members if m.status != Status.offline and not m.bot]
-                for member in filtered_members:
-                    types = [a.type for a in member.activities]
-                    if ActivityType.listening in types and ActivityType.playing not in types:
-                        try:
-                            if spotify_role not in member.roles:
-                                await member.add_roles(spotify_role)
-                        except Exception as ex:
-                            self.logger.info("*** FAILED to ADD role to member {} \n {} \n {}".format(member, member.activities, ex))
-                    else:
-                        try:
-                            if spotify_role in member.roles:
-                                await member.remove_roles(spotify_role)
-                        except Exception as ex:
-                            self.logger.info("*** FAILED to REMOVE role to member {} \n {} \n {}".format(member, member.activities, ex))
+        while True:
+            if self.bot.is_closed():
+                self.logger.info("ws connection closed")
+            else:
+                for guild in self.guilds:
+                    if guild.id not in self.guild_id_to_role_dict:
+                        continue
+                    spotify_role = self.guild_id_to_role_dict[guild.id]
+                    filtered_members = [m for m in guild.members if m.status != Status.offline and not m.bot]
+                    for member in filtered_members:
+                        types = [a.type for a in member.activities]
+                        if ActivityType.listening in types and ActivityType.playing not in types:
+                            try:
+                                if spotify_role not in member.roles:
+                                    await member.add_roles(spotify_role)
+                            except Exception as ex:
+                                self.logger.info("*** FAILED to ADD role to member {} \n {} \n {}".format(member, member.activities, ex))
+                        else:
+                            try:
+                                if spotify_role in member.roles:
+                                    await member.remove_roles(spotify_role)
+                            except Exception as ex:
+                                self.logger.info("*** FAILED to REMOVE role to member {} \n {} \n {}".format(member, member.activities, ex))
             await asyncio.sleep(BACKGROUND_TASK_LOOP_SECONDS)
