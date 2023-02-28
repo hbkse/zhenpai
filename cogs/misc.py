@@ -1,9 +1,10 @@
 import discord
 from discord.ext import commands
+import config
 
 
 class Misc(commands.Cog):
-    """Miscellaneous minor commands."""
+    """Miscellaneous commands."""
 
     def __init__(self, bot):
         self.bot = bot
@@ -16,6 +17,16 @@ class Misc(commands.Cog):
     async def echo(self, ctx, content):
         await ctx.send(content)
 
+    @commands.command()
+    async def debug(self, ctx):
+        message = [
+            f'Logged in as: {self.bot.user}',
+            f'Discord.py version: {discord.__version__}',
+            f'Visible guilds: {self.bot.guilds}',
+            f'Commit hash: {config.COMMIT_HASH}'
+        ]
 
-def setup(bot):
-    bot.add_cog(Misc(bot))
+        await ctx.send("\n".join(message))
+
+async def setup(bot):
+    await bot.add_cog(Misc(bot))

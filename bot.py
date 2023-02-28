@@ -4,25 +4,26 @@ import discord
 import logging.config
 from pathlib import Path
 import yaml
-import os
-
-intents = discord.Intents.default()
-intents.presences = True
-intents.members = True
-if os.environ.get('OWNER_ID'):
-    bot = commands.Bot(command_prefix='z!', intents=intents, owner_id=os.environ.get('OWNER_ID'))
-else:
-    import config
-    bot = commands.Bot(command_prefix='z!', intents=intents, owner_id=config.owner_id)
-
-LOGS_DIRECTORY = 'data/logs/'
+import config
+import asyncio
 
 extensions = [
     'cogs.misc',
-    'cogs.tagging',
-    'cogs.twitcasting',
-    'cogs.spotify'
+    # 'cogs.tagging',
+    # 'cogs.twitcasting',
+    # 'cogs.spotify',
+    'cogs.go_to_sleep'
 ]
+
+def setup_intents():
+    intents = discord.Intents.default()
+    intents.presences = True
+    intents.members = True
+    intents.message_content = True
+    return intents
+
+logger = logging.getLogger('zhenpai')
+bot = commands.Bot(command_prefix=config.COMMAND_PREFIX, intents=setup_intents(), owner_id=config.OWNER_ID)
 
 @bot.event
 async def on_command_error(ctx, error):
@@ -34,7 +35,7 @@ async def on_command_error(ctx, error):
             return
 
     logger.warning('%s - %s', ctx.message.content, error)
-    await ctx.send(f"{error}\nType `z!help` for usage details.")
+    await ctx.send(f"{error}\nType `{config.COMMAND_PREFIX}help` for usage details.")
 
 
 @bot.event
@@ -48,22 +49,19 @@ async def on_ready():
 async def on_message(message):
     await bot.process_commands(message)
 
-if __name__ == '__main__':
-    Path(LOGS_DIRECTORY).mkdir(parents=True, exist_ok=True)
+async def main():
+    Path(config.LOGS_DIRECTORY).mkdir(parents=True, exist_ok=True)
     with open('logging.conf.yaml', 'rt') as f:
-        config = yaml.safe_load(f.read())
-    logging.config.dictConfig(config)
+        logging_config = yaml.safe_load(f.read())
+    logging.config.dictConfig(logging_config)
 
-    logger = logging.getLogger('zhenpai')
+    # webserver.start_server()
 
-    for ext in extensions:
-        bot.load_extension(ext)
-        logger.info('Loaded extension: %s', ext)
+    async with bot:
+        for ext in extensions:
+            await bot.load_extension(ext)
+            logger.info('Loaded extension: %s', ext)
+        await bot.start(config.DISCORD_BOT_TOKEN)
 
-    webserver.start_server()
-
-if os.environ.get('DISCORD_BOT_TOKEN'):
-    bot.run(os.environ['DISCORD_BOT_TOKEN'])
-else:
-    import config
-    bot.run(config.bot_token)
+if __name__ == '__main__':
+    asyncio.run(main())

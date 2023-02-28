@@ -1,5 +1,8 @@
 ### Twitcasting Cog
 
+### 2/27/2023 Update
+None of this works, probably.
+
 #### Overview
 The Twitcasting cog notifies text channels whenever a
 subscribed Twitcasting user starts or stops a livestream. Users can subscribe
