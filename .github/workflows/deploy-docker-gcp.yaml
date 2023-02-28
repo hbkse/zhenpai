@@ -6,12 +6,15 @@ on:
     - master
 
 env:
+  # Deployment
   PROJECT_ID: ${{ secrets.GCE_PROJECT }}
-  GCE_INSTANCE: zhenpai-bot
+  SERVICE_ACCOUNT_KEY: ${{ secrets.GCE_SA_KEY }}
+  GCE_INSTANCE: instance-1
   GCE_INSTANCE_ZONE: us-central1-a
   DOCKER_IMAGE_NAME: ${{ github.repository }}
   DOCKER_TAR_NAME: latest.tar
   DOCKER_CONTAINER_NAME: zhenpai
+  # Application Secrets
   DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
   OWNER_ID: ${{ secrets.OWNER_ID }}
   TWITCAST_CLIENT_ID: ${{ secrets.TWITCAST_CLIENT_ID }}
@@ -31,12 +34,12 @@ jobs:
     - uses: GoogleCloudPlatform/github-actions/setup-gcloud@master
       with:
         version: '290.0.1'
-        service_account_key: ${{ secrets.GCE_SA_KEY }}
-        project_id: ${{ secrets.GCE_PROJECT }}
+        service_account_key: ${{ env.SERVICE_ACCOUNT_KEY }}
+        project_id: ${{ env.PROJECT_ID }}
 
     - name: Generate Environment Variables
       run: |-
-        sh deployScripts/addEnvToDockerfile.sh \
+        sh deploy/addEnvToDockerfile.sh \
         DISCORD_BOT_TOKEN \
         OWNER_ID \
         TWITCAST_CLIENT_ID \
