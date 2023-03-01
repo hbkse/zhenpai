@@ -23,7 +23,7 @@ on:
 env:
   # Deployment
   PROJECT_ID: ${{ secrets.GCE_PROJECT }}
-  GCP_CREDENTIALS: ${{ secrets.GCP_CREDENTIALS }}
+  GCE_SA_KEY: ${{ secrets.GCE_SA_KEY }}
   GCE_INSTANCE: my-githubactions-vm  
   GCE_INSTANCE_ZONE: us-central1-a   
   # Application secrets
@@ -61,7 +61,7 @@ jobs:
       name: 'Authenticate to Google Cloud'
       uses: 'google-github-actions/auth@v1'
       with:
-        credentials_json: '${{ env.GCP_CREDENTIALS }}'
+        credentials_json: '${{ env.GCE_SA_KEY }}'
 
     # Setup gcloud CLI
     - name: Set up Cloud SDK
