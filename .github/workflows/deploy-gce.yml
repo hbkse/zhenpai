@@ -24,7 +24,7 @@ env:
   # Deployment
   PROJECT_ID: ${{ secrets.GCE_PROJECT }}
   GCE_SA_KEY: ${{ secrets.GCE_SA_KEY }}
-  GCE_INSTANCE: my-githubactions-vm  
+  GCE_INSTANCE: instance-1  
   GCE_INSTANCE_ZONE: us-central1-a   
   # Application secrets
   DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
