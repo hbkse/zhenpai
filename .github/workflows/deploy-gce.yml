@@ -17,8 +17,8 @@ name: Build and Deploy to Google Compute Engine
 on:
   push:
     branches:
-    - 'master'
-    - 'gotosleep'
+    # - 'master'
+    - none
 
 env:
   # Deployment
