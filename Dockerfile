@@ -9,4 +9,4 @@ COPY . .
 
 # Environment Variables
 
-CMD [ "python", "./bot.py"]
+CMD [ "python", "./start.py"]

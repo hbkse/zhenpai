@@ -1,18 +1,15 @@
-from cogs import webserver
 from discord.ext import commands
 import discord
 import logging.config
-from pathlib import Path
-import yaml
 import config
-import asyncio
+
+log = logging.getLogger(__name__)
 
 extensions = [
     'cogs.misc',
     # 'cogs.tagging',
-    # 'cogs.twitcasting',
     # 'cogs.spotify',
-    'cogs.go_to_sleep'
+    'cogs.gotosleep'
 ]
 
 def setup_intents():
@@ -22,46 +19,43 @@ def setup_intents():
     intents.message_content = True
     return intents
 
-logger = logging.getLogger('zhenpai')
-bot = commands.Bot(command_prefix=config.COMMAND_PREFIX, intents=setup_intents(), owner_id=config.OWNER_ID)
+class Zhenpai(commands.Bot):
+    def __init__(self):
+        super().__init__(command_prefix=config.COMMAND_PREFIX, owner_id=config.OWNER_ID, intents=setup_intents())
 
-@bot.event
-async def on_command_error(ctx, error):
-    if hasattr(ctx.command, "on_error"):
-        return
+    async def on_ready(self):
+        log.info('Logged in as: %s', self.user)
+        log.info('Discord.py version: %s', discord.__version__)
 
-    if ctx.cog:
-        if commands.Cog._get_overridden_method(ctx.cog.cog_command_error) is not None:
+    async def on_command_error(self, ctx: commands.Context, error: commands.CommandError) -> None:
+        if isinstance(error, commands.CommandNotFound):
+            return
+        elif isinstance(error, commands.NotOwner):
+            return
+        elif isinstance(error, commands.CheckAnyFailure) or isinstance(error, commands.CheckFailure):
+            return await ctx.send(error)
+        elif isinstance(error, commands.TooManyArguments):
+            return await ctx.send('Too many argument(s).')
+        elif isinstance(error, commands.BadArgument):
+            return await ctx.send('Invalid argument(s).')
+        elif isinstance(error, commands.MissingRequiredArgument):
+            return await ctx.send('Missing argument(s).')
+        elif hasattr(ctx.command, "on_error"):
             return
 
-    logger.warning('%s - %s', ctx.message.content, error)
-    await ctx.send(f"{error}\nType `{config.COMMAND_PREFIX}help` for usage details.")
+        if ctx.cog:
+            if commands.Cog._get_overridden_method(ctx.cog.cog_command_error) is not None:
+                return
 
+        log.warning('%s - %s', ctx.message.content, error)
+    
+    async def on_message(self, message: discord.Message) -> None:
+        if message.author.bot:
+            return
+        await self.process_commands(message)
 
-@bot.event
-async def on_ready():
-    logger.info('Logged in as: %s', bot.user)
-    logger.info('Discord.py version: %s', discord.__version__)
-    logger.info('Visible guilds: %s', bot.guilds)
-
-
-@bot.event
-async def on_message(message):
-    await bot.process_commands(message)
-
-async def main():
-    Path(config.LOGS_DIRECTORY).mkdir(parents=True, exist_ok=True)
-    with open('logging.conf.yaml', 'rt') as f:
-        logging_config = yaml.safe_load(f.read())
-    logging.config.dictConfig(logging_config)
-
-    # webserver.start_server()
-
-    async with bot:
+    async def _run(self):
         for ext in extensions:
-            await bot.load_extension(ext)
-            logger.info('Loaded extension: %s', ext)
-        await bot.start(config.DISCORD_BOT_TOKEN)
-
-if __name__ == '__main__':
-    asyncio.run(main())
+            await self.load_extension(ext)
+            log.info('Loaded extension: %s', ext)
+        await self.start(config.DISCORD_BOT_TOKEN)

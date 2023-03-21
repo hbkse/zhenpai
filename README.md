@@ -1,5 +1,7 @@
 # zhenpai
 
+[Invite Link](https://discord.com/api/oauth2/authorize?client_id=670839356872982538&permissions=4398046511089&scope=bot)
+
 ![Lint Python](https://github.com/gweng88/zhenpai/workflows/Lint%20Python/badge.svg)
 ![Deploy](https://github.com/gweng88/zhenpai/workflows/Deploy/badge.svg)
 ![Python](https://img.shields.io/badge/python-v3.7-blue)  
