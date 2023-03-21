@@ -7,6 +7,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-# Environment Variables
-
 CMD [ "python", "./start.py"]
