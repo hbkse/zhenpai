@@ -15,9 +15,9 @@ class GoToSleep(commands.Cog):
     def __init__(self, bot: commands.Bot):
         pass
 
-    def bot_check_once(self):
-        # check the role is created in this guild
-        pass
+    # def bot_check_once(self):
+    #     # check the role is created in this guild
+    #     pass
     
     async def update_roles(self):
         """
