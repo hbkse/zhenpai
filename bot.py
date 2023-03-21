@@ -9,7 +9,8 @@ extensions = [
     'cogs.misc',
     # 'cogs.tagging',
     # 'cogs.spotify',
-    'cogs.gotosleep'
+    'cogs.gotosleep',
+    'cogs.apex'
 ]
 
 def setup_intents():
