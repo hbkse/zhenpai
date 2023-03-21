@@ -1,4 +1,4 @@
-from .go_to_sleep import GoToSleep
+from .gotosleep import GoToSleep
 
 async def setup(bot):
     await bot.add_cog(GoToSleep(bot))

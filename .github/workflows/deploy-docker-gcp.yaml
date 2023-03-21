@@ -3,8 +3,8 @@ name: Deploy
 on:
   push:
     branches:
-    - master
-
+    # - master
+    - none
 env:
   # Deployment
   PROJECT_ID: ${{ secrets.GCE_PROJECT }}

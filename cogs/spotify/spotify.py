@@ -10,12 +10,13 @@ import asyncio
 SPOTIFY_ROLE_NAME = "now_playing"
 BACKGROUND_TASK_LOOP_SECONDS = 15
 
+log: logging.Logger = logging.getLogger(__name__)
+
 class Spotify(commands.Cog):
     """
     """
 
     def __init__(self, bot):
-        self.logger = logging.getLogger('zhenpai.spotify')
         self.bot = bot
         self.guilds = None
         self.guild_id_to_role_dict = {}
@@ -40,12 +41,12 @@ class Spotify(commands.Cog):
                 try: 
                     self.guild_id_to_role_dict[guild.id] = await guild.create_role(name=SPOTIFY_ROLE_NAME, hoist=True)
                 except:
-                    self.logger.info("failed to create role in {}".format(guild))
+                    log.info("failed to create role in {}".format(guild))
 
         # how very ugly... :)
         while True:
             if self.bot.is_closed():
-                self.logger.info("ws connection closed")
+                log.info("ws connection closed")
             else:
                 for guild in self.guilds:
                     if guild.id not in self.guild_id_to_role_dict:
@@ -59,11 +60,11 @@ class Spotify(commands.Cog):
                                 if spotify_role not in member.roles:
                                     await member.add_roles(spotify_role)
                             except Exception as ex:
-                                self.logger.info("*** FAILED to ADD role to member {} \n {} \n {}".format(member, member.activities, ex))
+                                log.info("*** FAILED to ADD role to member {} \n {} \n {}".format(member, member.activities, ex))
                         else:
                             try:
                                 if spotify_role in member.roles:
                                     await member.remove_roles(spotify_role)
                             except Exception as ex:
-                                self.logger.info("*** FAILED to REMOVE role to member {} \n {} \n {}".format(member, member.activities, ex))
+                                log.info("*** FAILED to REMOVE role to member {} \n {} \n {}".format(member, member.activities, ex))
             await asyncio.sleep(BACKGROUND_TASK_LOOP_SECONDS)
