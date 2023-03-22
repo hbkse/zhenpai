@@ -1,16 +1,18 @@
 from discord.ext import commands
 import discord
-import logging.config
+import logging
 import config
+from aiohttp import ClientSession
 
-log = logging.getLogger(__name__)
+log: logging.Logger = logging.getLogger(__name__)
 
 extensions = [
     'cogs.misc',
     # 'cogs.tagging',
     # 'cogs.spotify',
     'cogs.gotosleep',
-    'cogs.apex'
+    'cogs.apex',
+    'cogs.admin'
 ]
 
 def setup_intents():
@@ -21,8 +23,13 @@ def setup_intents():
     return intents
 
 class Zhenpai(commands.Bot):
-    def __init__(self):
-        super().__init__(command_prefix=config.COMMAND_PREFIX, owner_id=config.OWNER_ID, intents=setup_intents())
+    def __init__(self, http_client: ClientSession):
+        super().__init__(
+            command_prefix=config.COMMAND_PREFIX, 
+            owner_id=config.OWNER_ID, 
+            intents=setup_intents()
+        )
+        self.http_client = http_client
 
     async def on_ready(self):
         log.info('Logged in as: %s', self.user)

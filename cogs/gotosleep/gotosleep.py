@@ -18,6 +18,18 @@ class GoToSleep(commands.Cog):
     # def bot_check_once(self):
     #     # check the role is created in this guild
     #     pass
+
+    async def cog_load(self) -> None:
+        # create gotosleep role if does not exist in 
+        return await super().cog_load()
+
+    # slash command    
+    async def opt_in(self, ctx):
+        pass
+
+    # slash command
+    async def opt_out(self, ctx):
+        pass    
     
     async def update_roles(self):
         """

@@ -4,6 +4,7 @@ import asyncio
 import contextlib
 from bot import Zhenpai
 from logging.handlers import RotatingFileHandler
+from aiohttp import ClientSession
 
 class RemoveNoise(logging.Filter):
     def __init__(self):
@@ -14,7 +15,6 @@ class RemoveNoise(logging.Filter):
             return False
         return True
 
-# Taken from RoboDanny
 @contextlib.contextmanager
 def setup_logging():
     log = logging.getLogger()
@@ -43,8 +43,10 @@ def setup_logging():
             log.removeHandler(hdlr)
 
 async def run_bot():
-    async with Zhenpai() as bot:
-        await bot._run()
+    async with ClientSession() as http_client:
+        # async with asyncpg.create_pool() as pool:
+            async with Zhenpai(http_client=http_client) as bot:
+                await bot._run()
 
 def main():
     with setup_logging():
