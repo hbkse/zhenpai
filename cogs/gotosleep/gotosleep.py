@@ -1,4 +1,6 @@
-import enum
+from typing import Optional
+
+import discord
 from discord import app_commands
 from discord.ext import commands
 import logging
@@ -21,31 +23,31 @@ class GoToSleep(commands.Cog):
         pass
 
     @app_commands.command()
-    @app_commands.describe(time='The time to sleep at. ex. 15:30', day='The day to set the time for.')
-    @app_commands.choices(field=[app_commands.Choice(value=day, name=day) for day in DAY_OPTIONS])
-    async def sleep(self, ctx: commands.Context, time: str, day: str):
+    @app_commands.describe(time='The time to sleep at. ex. 23:30', day='The day to set the time for.')
+    @app_commands.choices(day=[app_commands.Choice(value=day, name=day) for day in DAY_OPTIONS])
+    async def sleep(self, interaction: discord.Interaction, time: str, day: Optional[str]):
         """ Set the time to sleep at. Bot will automatically assign the gotosleep role to you at the specified time. """
         pass
 
     @app_commands.command()
     @app_commands.describe(time='The time to wake up at. ex. 9:30', day='The day to set the time for.')
-    @app_commands.choices(field=[app_commands.Choice(value=day, name=day) for day in DAY_OPTIONS])
-    async def wakeup(self, ctx: commands.Context, time: str, day: str):
+    @app_commands.choices(day=[app_commands.Choice(value=day, name=day) for day in DAY_OPTIONS])
+    async def wakeup(self, interaction: discord.Interaction, time: str, day: Optional[str]):
         """ Set the time to wake up at. Bot will automatically remove the gotosleep role from you at the specified time. """
         pass
 
     @app_commands.command()
-    async def snooze(self, ctx: commands.Context):
+    async def snooze(self, interaction: discord.Interaction):
         """ Deactivate gotosleep until you turn it back on. """
         pass
 
     @app_commands.command()
-    async def unsnooze(self, ctx: commands.Context):
+    async def unsnooze(self, interaction: discord.Interaction):
         """ Turn gotosleep back on. """
         pass
 
     @app_commands.command()
-    async def display(self, ctx: commands.Context):
+    async def display(self, interaction: discord.Interaction):
         """Displays currently set times"""
         pass
     
