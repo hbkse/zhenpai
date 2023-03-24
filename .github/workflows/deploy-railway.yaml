@@ -11,11 +11,15 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-    - name: Set up pyway 
+    - name: Checkout
       uses: actions/checkout@v3
+    
+    - name: Set up python 
       uses: actions/setup-python@v4
       with:
-        python-version: '3.8' 
+        python-version: '3.8'
+        
+    - name: Set up pyway
       run: pip install pyway
 
     - name: Run pyway
@@ -39,7 +43,6 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v3
 
-    # Setup Railway CLI
     - name: Set up Railway CLI
       run: curl -fsSL cli.new | sh
 
