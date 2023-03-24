@@ -12,19 +12,23 @@ jobs:
     container:
       image: flyway/flyway:9.8.1
       env:
-        NODE_ENV: development
+        FLYWAY_URL: jdbc:postgresql://${{ secrets.DATABASE_HOST }}:${{ secrets.DATABASE_PORT }}/${{ secrets.DATABASE_NAME }}
+        FLYWAY_USER: ${{ secrets.DATABASE_USERNAME }}
+        FLYWAY_PASSWORD: ${{ secrets.DATABASE_PASSWORD }}
+        FLYWAY_LOCATIONS: filesystem:migrations
       
     steps:
-      - name: Run flyway
-        run: |
-          flyway info
-          flyway validate
-          flyway migrate
-        env:
-          FLYWAY_URL: jdbc:postgresql://${{ secrets.DATABASE_HOST }}:${{ secrets.DATABASE_PORT }}/${{ secrets.DATABASE_NAME }}
-          FLYWAY_USER: ${{ secrets.DATABASE_USERNAME }}
-          FLYWAY_PASSWORD: ${{ secrets.DATABASE_PASSWORD }}
-          FLYWAY_LOCATIONS: filesystem:migrations
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Flyway Info
+        run: flyway info
+
+      - name: Flyway Validate
+        run: flyway validate
+
+      - name: Flyway Migrate
+        run: flyway migrate
 
   deploy:
     name: Deploy to Railway
