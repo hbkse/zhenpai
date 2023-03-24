@@ -6,3 +6,4 @@ data/*
 *.log
 *.db
 *.pyc
+flyway.conf

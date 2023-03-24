@@ -3,6 +3,7 @@ import discord
 import logging
 import config
 from aiohttp import ClientSession
+import asyncpg
 
 from typing import Optional
 
@@ -27,6 +28,7 @@ def setup_intents():
 class Zhenpai(commands.Bot):
     def __init__(self, 
         http_client: ClientSession, 
+        db_pool: asyncpg.pool,
         testing_guild_id: Optional[int] = None
     ):
         super().__init__(
@@ -35,6 +37,7 @@ class Zhenpai(commands.Bot):
             intents=setup_intents()
         )
         self.http_client = http_client
+        self.db_pool = db_pool
         self.testing_guild_id = testing_guild_id or config.TESTING_GUILD_ID
 
     async def on_ready(self):

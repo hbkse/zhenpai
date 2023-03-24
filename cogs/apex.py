@@ -36,5 +36,5 @@ class Apex(commands.Cog):
         hours = time_remaining.seconds // 3600
         await ctx.send(f"Current ranked split ends in: {days} days {hours} hours")
 
-async def setup(bot):
+async def setup(bot: commands.Bot):
     await bot.add_cog(Apex(bot))

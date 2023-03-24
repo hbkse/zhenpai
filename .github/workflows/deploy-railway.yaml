@@ -1,0 +1,43 @@
+name: Build and Deploy to Railway (railway.app)
+
+on:
+  push:
+    branches:
+     - 'master'
+
+env:
+  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+
+jobs:
+  # migration:
+  #   name: Flyway Migration
+  #   runs-on: ubuntu-latest
+    
+  #   steps:
+  #   - name: Checkout
+  #     uses: actions/checkout@v3
+
+  #   - name: Set up flyway
+  #     uses: redhat-actions/flyway@v1
+
+  #   - name: Run flyway
+  #     run: flyway migrate
+
+  deploy:
+    name: Deploy to Railway
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    # Setup Railway CLI
+    - name: Set up Railway CLI
+      run: curl -fsSL cli.new | sh
+
+    - name: Deploy
+      run: railway up
+      env: 
+        RAILWAY_TOKEN: $RAILWAY_TOKEN
+        # This should be infered, but let's add it anyways
+        RAILWAY_DOCKERFILE_PATH: Dockerfile

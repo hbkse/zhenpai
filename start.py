@@ -5,6 +5,19 @@ import contextlib
 from bot import Zhenpai
 from logging.handlers import RotatingFileHandler
 from aiohttp import ClientSession
+import asyncpg
+import config
+
+def db_connection_options():
+    return {
+        'user': config.PGUSER,
+        'password': config.PGPASSWORD,
+        'database': config.PGDATABASE,
+        'host': config.PGHOST,
+        'port': config.PGPORT,
+        'min_size': 2,
+        'max_size': 8
+    }
 
 class RemoveNoise(logging.Filter):
     def __init__(self):
@@ -44,8 +57,8 @@ def setup_logging():
 
 async def run_bot():
     async with ClientSession() as http_client:
-        # async with asyncpg.create_pool() as pool:
-            async with Zhenpai(http_client=http_client) as bot:
+        async with asyncpg.create_pool(**db_connection_options()) as pool:
+            async with Zhenpai(http_client=http_client, db_pool=pool) as bot:
                 await bot._run()
 
 def main():
