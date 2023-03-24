@@ -5,9 +5,6 @@ on:
     branches:
      - 'master'
 
-env:
-  RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-
 jobs:
   # migration:
   #   name: Flyway Migration
@@ -38,6 +35,6 @@ jobs:
     - name: Deploy
       run: railway up
       env: 
-        RAILWAY_TOKEN: $RAILWAY_TOKEN
+        RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         # This should be infered, but let's add it anyways
         RAILWAY_DOCKERFILE_PATH: Dockerfile
