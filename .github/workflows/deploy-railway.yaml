@@ -6,19 +6,30 @@ on:
      - 'master'
 
 jobs:
-  # migration:
-  #   name: Flyway Migration
-  #   runs-on: ubuntu-latest
+  migration:
+    name: Database Migration
+    runs-on: ubuntu-latest
     
-  #   steps:
-  #   - name: Checkout
-  #     uses: actions/checkout@v3
+    steps:
+    - name: Set up pyway 
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.8' 
+      - run: pip install pyway
 
-  #   - name: Set up flyway
-  #     uses: redhat-actions/flyway@v1
-
-  #   - name: Run flyway
-  #     run: flyway migrate
+    - name: Run pyway
+      run: |
+        pyway info
+        pyway validate
+        pyway migrate --database-migration-dir ./migrations
+      env:
+        PYWAY_TYPE: postgres
+        PYWAY_DATABASE_HOST: ${{ secrets.DATABASE_HOST }}
+        PYWAY_DATABASE_PORT: ${{ secrets.DATABASE_PORT }}
+        PYWAY_DATABASE_NAME: ${{ secrets.DATABASE_NAME }}
+        PYWAY_DATABASE_USERNAME: ${{ secrets.DATABASE_USERNAME }}
+        PYWAY_DATABASE_PASSWORD: ${{ secrets.DATABASE_PASSWORD }}
 
   deploy:
     name: Deploy to Railway
@@ -36,5 +47,6 @@ jobs:
       run: railway up
       env: 
         RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        COMMIT_HASH: ${{ vars.GITHUB_SHA }}
         # This should be infered, but let's add it anyways
         RAILWAY_DOCKERFILE_PATH: Dockerfile
