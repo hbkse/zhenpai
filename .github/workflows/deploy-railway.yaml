@@ -7,38 +7,29 @@ on:
 
 jobs:
   migration:
-    name: Database Migration
+    name: Flyway Migration
     runs-on: ubuntu-latest
-    
-    steps:
-    - name: Checkout
-      uses: actions/checkout@v3
-    
-    - name: Set up python 
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.8'
-        
-    - name: Set up pyway
-      run: pip install pyway
-
-    - name: Run pyway
-      run: |
-        pyway info
-        pyway validate
-        pyway migrate
+    container:
+      image: flyway/flyway:9.8.1
       env:
-        PYWAY_DATABASE_MIGRATION_DIR: migrations
-        PYWAY_TYPE: postgres
-        PYWAY_DATABASE_HOST: ${{ secrets.DATABASE_HOST }}
-        PYWAY_DATABASE_PORT: ${{ secrets.DATABASE_PORT }}
-        PYWAY_DATABASE_NAME: ${{ secrets.DATABASE_NAME }}
-        PYWAY_DATABASE_USERNAME: ${{ secrets.DATABASE_USERNAME }}
-        PYWAY_DATABASE_PASSWORD: ${{ secrets.DATABASE_PASSWORD }}
+        NODE_ENV: development
+      
+    steps:
+      - name: Run flyway
+        run: |
+          flyway info
+          flyway validate
+          flyway migrate
+        env:
+          FLYWAY_URL: jdbc:postgresql://${{ secrets.DATABASE_HOST }}:${{ secrets.DATABASE_PORT }}/${{ secrets.DATABASE_NAME }}
+          FLYWAY_USER: ${{ secrets.DATABASE_USERNAME }}
+          FLYWAY_PASSWORD: ${{ secrets.DATABASE_PASSWORD }}
+          FLYWAY_LOCATIONS: filesystem:migrations
 
   deploy:
     name: Deploy to Railway
     runs-on: ubuntu-latest
+    needs: migration
 
     steps:
     - name: Checkout
