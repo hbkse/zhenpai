@@ -24,11 +24,11 @@ jobs:
       - name: Flyway Info
         run: flyway info
 
-      - name: Flyway Validate
-        run: flyway validate
-
       - name: Flyway Migrate
         run: flyway migrate
+
+      - name: Flyway Validate
+        run: flyway validate
 
   deploy:
     name: Deploy to Railway
