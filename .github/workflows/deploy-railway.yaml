@@ -26,8 +26,9 @@ jobs:
       run: |
         pyway info
         pyway validate
-        pyway migrate --database-migration-dir ./migrations
+        pyway migrate
       env:
+        PYWAY_DATABASE_MIGRATION_DIR: migrations
         PYWAY_TYPE: postgres
         PYWAY_DATABASE_HOST: ${{ secrets.DATABASE_HOST }}
         PYWAY_DATABASE_PORT: ${{ secrets.DATABASE_PORT }}
