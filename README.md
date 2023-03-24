@@ -11,8 +11,6 @@ Create your own `.env` file based on `.env.example`. You can create a bot and gr
 Run `start.py`.
 
 ## Overview
-* tagging - tag any image with a keyword. Any Discord message containing
-the keyword will prompt the bot to respond with the image in an embed.
-* twitcasting - subscribe to any [Twitcasting](https://twitcasting.tv/) user
-and receive notifications when they start or stop a livestream.
+* tags - 
+* gotosleep - 
 * misc - admin commands and helpful things
