@@ -141,7 +141,6 @@ class GoToSleep(commands.Cog):
             
         # set permissions every time, in case new channels have been created
         for channel in guild.channels:
-            print(channel)
             await channel.set_permissions(gotosleep_role, view_channel=False)
 
     @update_roles.before_loop
