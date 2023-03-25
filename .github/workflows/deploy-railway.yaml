@@ -43,7 +43,7 @@ jobs:
       run: curl -fsSL cli.new | sh
 
     - name: Deploy
-      run: railway up --verbose
+      run: railway up -- --verbose
       env: 
         RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         COMMIT_HASH: ${{ env.GITHUB_SHA }}
