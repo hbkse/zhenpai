@@ -43,9 +43,9 @@ jobs:
       run: curl -fsSL cli.new | sh
 
     - name: Deploy
-      run: railway up
+      run: railway up -v
       env: 
         RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-        COMMIT_HASH: ${{ vars.GITHUB_SHA }}
+        COMMIT_HASH: ${{ env.GITHUB_SHA }}
         # This should be infered, but let's add it anyways
         RAILWAY_DOCKERFILE_PATH: Dockerfile
