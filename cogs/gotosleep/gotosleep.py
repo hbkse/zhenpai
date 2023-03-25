@@ -143,3 +143,4 @@ class GoToSleep(commands.Cog):
     # TODO: need to set up event to update permissions when new channel is created
     # TODO: need to add an option to dm the bot and force remove your role
     # TODO: removing the role from everyone when the bot is down
+    # TODO: need to skip admins? cant believe the task crashes with 403

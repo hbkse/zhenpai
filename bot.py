@@ -11,7 +11,7 @@ log: logging.Logger = logging.getLogger(__name__)
 
 extensions = [
     'cogs.misc',
-    # 'cogs.tagging',
+    'cogs.tags',
     # 'cogs.spotify',
     'cogs.gotosleep',
     'cogs.apex',
