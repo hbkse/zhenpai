@@ -12,13 +12,11 @@ from .db import GoToSleepDb
 log: logging.Logger = logging.getLogger(__name__)
 
 DAY_OPTIONS = ['All', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-ROLE_NAME = 'gotosleep'
+GOTOSLEEP_ROLE_NAME = 'zhenpai-gotosleep'
 POLLING_INTERVAL = 1
 
 class GoToSleep(commands.Cog):
-    """
-    For people who can't control themselves and sleep on time.
-    """
+    """ For people who can't control themselves and sleep on time. """
 
     def __init__(self, bot: Zhenpai):
         self.bot = bot
@@ -28,17 +26,10 @@ class GoToSleep(commands.Cog):
     def cog_unload(self):
         self.update_roles.cancel()
 
-    async def _set_up_role_and_channel_permissions(self, guild: discord.Guild) -> None:
-        """ Create the gotosleep role and set permission override for all existing channels. """
-
-        gotosleep_role = discord.utils.get(guild.roles, name=ROLE_NAME) or await guild.create_role(name=ROLE_NAME)
-        for channel in guild.channels:
-            await channel.set_permissions(gotosleep_role, view_channel=False)
-
-    async def _get_gotosleep_role(self, guild: discord.Guild) -> discord.Role:
+    def _get_gotosleep_role(self, guild: discord.Guild) -> discord.Role:
         """ Get the gotosleep role. """
 
-        return discord.utils.get(guild.roles, name=ROLE_NAME) 
+        return discord.utils.get(guild.roles, name=GOTOSLEEP_ROLE_NAME) 
     
     def _convert_time(self, time: str) -> datetime.time:
         """ Convert the time from a string to an datetime. """
@@ -110,7 +101,7 @@ class GoToSleep(commands.Cog):
         """
 
         the_entire_table = await self.db.get_all_users_global()
-        log.info(f'Scanned the entire table. Found {len(the_entire_table)} records.')
+        log.info(f'Scanned the entire gotosleep table. Found {len(the_entire_table)} records.')
         todays_day = datetime.datetime.today().strftime('%A').lower()
         for record in the_entire_table:
             start = record[todays_day + '_start_time']
@@ -121,7 +112,7 @@ class GoToSleep(commands.Cog):
 
             guild = self.bot.get_guild(guild_id)
             member = guild.get_member(user_id)
-            role = await self._get_gotosleep_role(guild)
+            role = self._get_gotosleep_role(guild)
 
             # if any of these are true, let's just remove the role to be safe
             if not active or start is None or end is None:
@@ -136,11 +127,31 @@ class GoToSleep(commands.Cog):
                 log.info(f'Removing role from {member} in {guild}.')
                 await member.remove_roles(role)
 
-    @update_roles.before_loop
-    async def before_printer(self):
-        await self.bot.wait_until_ready()
+    async def _set_up_role_and_channel_permissions(self, guild: discord.Guild) -> None:
+        """ Create the gotosleep role and set permission override for all existing channels. """
 
-    # TODO: need to set up event to update permissions when new channel is created
+        # create role if it doesn't exist
+        if not (gotosleep_role := self._get_gotosleep_role(guild)):
+            try:
+                await guild.create_role(name=GOTOSLEEP_ROLE_NAME)
+                log.info(f'Created gotosleep role in {guild}')
+            except:
+                log.info(f'Failed to create gotosleep role in {guild}')
+                return
+            
+        # set permissions every time, in case new channels have been created
+        for channel in guild.channels:
+            print(channel)
+            await channel.set_permissions(gotosleep_role, view_channel=False)
+
+    @update_roles.before_loop
+    async def before_update_roles(self):
+        await self.bot.wait_until_ready()
+        for guild in self.bot.guilds:
+            await self._set_up_role_and_channel_permissions(guild)
+        log.info("Starting gotosleep role update loop")
+
+    # TODO: need to set up event to update permissions when new channel is created?
     # TODO: need to add an option to dm the bot and force remove your role
     # TODO: removing the role from everyone when the bot is down
     # TODO: need to skip admins? cant believe the task crashes with 403

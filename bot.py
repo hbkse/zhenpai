@@ -12,7 +12,7 @@ log: logging.Logger = logging.getLogger(__name__)
 extensions = [
     'cogs.misc',
     'cogs.tags',
-    # 'cogs.spotify',
+    'cogs.spotify',
     'cogs.gotosleep',
     'cogs.apex',
     'cogs.admin'

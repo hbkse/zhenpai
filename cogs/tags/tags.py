@@ -7,7 +7,7 @@ from bot import Zhenpai
 log: logging.Logger = logging.getLogger(__name__)
 
 class Tags(commands.Cog):
-    """For saving and retrieving things"""
+    """ For saving and retrieving things """
 
     def __init__(self, bot: Zhenpai):
         self.bot = bot

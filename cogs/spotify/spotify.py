@@ -1,70 +1,58 @@
 import logging
 
-from discord import File
-from discord.ext import commands
-from discord.embeds import Embed
+import discord
+from discord.ext import tasks, commands
 from discord import ActivityType, Status
+from bot import Zhenpai
 
-import asyncio
-
-SPOTIFY_ROLE_NAME = "now_playing"
+SPOTIFY_ROLE_NAME = "Spotify"
 BACKGROUND_TASK_LOOP_SECONDS = 15
 
 log: logging.Logger = logging.getLogger(__name__)
 
 class Spotify(commands.Cog):
-    """
-    """
+    """ For highlighting and hoisting people who are listening to Spotify """
 
-    def __init__(self, bot):
+    def __init__(self, bot: Zhenpai):
         self.bot = bot
-        self.guilds = None
-        self.guild_id_to_role_dict = {}
-        self.bg_task = self.bot.loop.create_task(self.update_roles())
+        self.update_roles.start()
 
-    async def update_roles(self):
-        """
-        """
-        await self.bot.wait_until_ready()
-        self.guilds = self.bot.guilds
-        '''
-        It would probably be better to check if the role hasn't been created yet 
-        by storing the role id in db, instead of checking by name, especially because 
-        role names can be the same
-        '''
-        for guild in self.guilds:
-            for role in guild.roles:
-                if role.name == SPOTIFY_ROLE_NAME:
-                    self.guild_id_to_role_dict[guild.id] = role
-                    break
-            if guild.id not in self.guild_id_to_role_dict:
-                try: 
-                    self.guild_id_to_role_dict[guild.id] = await guild.create_role(name=SPOTIFY_ROLE_NAME, hoist=True)
+    async def _role_setup(self):
+        """ Create the spotify role in each guild if it doesn't exist. """
+
+        for guild in self.bot.guilds:
+            if not self._get_spotify_role(guild):
+                try:
+                    await guild.create_role(name=SPOTIFY_ROLE_NAME, hoist=True)
+                    log.info("created spotify role in {}".format(guild))
                 except:
-                    log.info("failed to create role in {}".format(guild))
+                    log.info("failed to create spotify role in {}".format(guild))
 
-        # how very ugly... :)
-        while True:
-            if self.bot.is_closed():
-                log.info("ws connection closed")
-            else:
-                for guild in self.guilds:
-                    if guild.id not in self.guild_id_to_role_dict:
-                        continue
-                    spotify_role = self.guild_id_to_role_dict[guild.id]
-                    filtered_members = [m for m in guild.members if m.status != Status.offline and not m.bot]
-                    for member in filtered_members:
-                        types = [a.type for a in member.activities]
-                        if ActivityType.listening in types and ActivityType.playing not in types:
-                            try:
-                                if spotify_role not in member.roles:
-                                    await member.add_roles(spotify_role)
-                            except Exception as ex:
-                                log.info("*** FAILED to ADD role to member {} \n {} \n {}".format(member, member.activities, ex))
-                        else:
-                            try:
-                                if spotify_role in member.roles:
-                                    await member.remove_roles(spotify_role)
-                            except Exception as ex:
-                                log.info("*** FAILED to REMOVE role to member {} \n {} \n {}".format(member, member.activities, ex))
-            await asyncio.sleep(BACKGROUND_TASK_LOOP_SECONDS)
+    def cog_unload(self):
+        self.update_roles.cancel()
+
+    def _get_spotify_role(self, guild: discord.Guild) -> discord.Role:
+        """ Get the spotify role. """
+
+        return discord.utils.get(guild.roles, name=SPOTIFY_ROLE_NAME) 
+
+    @tasks.loop(seconds=BACKGROUND_TASK_LOOP_SECONDS)
+    async def update_roles(self):
+        """ Add or remove the spotify role from members who are listening to spotify """
+            
+        for guild in self.bot.guilds:
+            spotify_role = self._get_spotify_role(guild)
+            assert spotify_role is not None, "Spotify role not found in guild {}".format(guild)
+            filtered_members = [m for m in guild.members if m.status != Status.offline and not m.bot]
+            for member in filtered_members:
+                activity_types = [a.type for a in member.activities]
+                if ActivityType.listening in activity_types and ActivityType.playing not in activity_types:
+                    await member.add_roles(spotify_role)
+                else:
+                    await member.remove_roles(spotify_role)
+
+    @update_roles.before_loop
+    async def before_update_roles(self):
+        await self.bot.wait_until_ready()
+        await self._role_setup()
+        log.info("Starting spotify role update loop")
