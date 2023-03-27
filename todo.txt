@@ -4,7 +4,8 @@ current issues
     gotosleep: need to add an option to dm the bot and force remove your role
     gotosleep: removing the role from everyone when the bot is down
 
-new features
+potential stuff to work on
+    add timezone param option for gotosleep (right now everything central)
     remindme
     codenames
     chatgpt
