@@ -46,6 +46,6 @@ jobs:
       run: railway up
       env: 
         RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-        COMMIT_HASH: ${{ env.GITHUB_SHA }}
+        COMMIT_HASH: ${{ github.sha }}
         # This should be infered, but let's add it anyways
         RAILWAY_DOCKERFILE_PATH: Dockerfile
