@@ -6,6 +6,7 @@ current issues
 
 potential stuff to work on
     add timezone param option for gotosleep (right now everything central)
+    move timezone handling code to a utils file (will need it for remindme stuff too)
     remindme
     codenames
     chatgpt

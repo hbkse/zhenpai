@@ -167,7 +167,7 @@ class GoToSleep(commands.Cog):
                         await member.remove_roles(role)
         except Exception as e:
             log.error(f'Error in gotosleep update_roles: {e}')
-            log.info(record)
+            log.error(f'Related Record: {record}')
 
     async def _set_up_role_and_channel_permissions_if_needed(self, guild: discord.Guild) -> None:
         """ Create the gotosleep role and set permission override for all existing channels. """
@@ -177,8 +177,8 @@ class GoToSleep(commands.Cog):
             try:
                 await guild.create_role(name=GOTOSLEEP_ROLE_NAME)
                 log.info(f'Created gotosleep role in {guild}')
-            except:
-                log.info(f'Failed to create gotosleep role in {guild}')
+            except Exception as e:
+                log.error(f'Failed to create gotosleep role in {guild}: {e}')
                 return
             
         # set permissions if channel doesn't have it
@@ -188,8 +188,8 @@ class GoToSleep(commands.Cog):
                 try:
                     log.info(f'Setting permissions for {channel} in {guild}')
                     await channel.set_permissions(gotosleep_role, view_channel=False)
-                except:
-                    log.info(f'Failed to set permissions for {channel} in {guild}')
+                except Exception as e:
+                    log.error(f'Failed to set permissions for {channel} in {guild}: {e}')
                     return
                 
     @update_roles.before_loop
@@ -202,3 +202,11 @@ class GoToSleep(commands.Cog):
     @update_roles.after_loop
     async def after_update_roles(self):
         log.info("Stopping gotosleep role update loop")
+
+    @commands.command()
+    @commands.is_owner()
+    async def forcesetup(self, ctx: commands.Context, guild_id: int):
+        """ Force setup for a guild. """
+        guild = self.bot.get_guild(guild_id)
+        await self._set_up_role_and_channel_permissions_if_needed(guild)
+        await ctx.send('Done.')
