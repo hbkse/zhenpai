@@ -1,0 +1,11 @@
+current issues
+    need to save timestamps into dbs as utc+0 
+    kick people out of voice in gotosleep when the time comes 
+    gotosleep: need to add an option to dm the bot and force remove your role
+    gotosleep: removing the role from everyone when the bot is down
+
+potential stuff to work on
+    add timezone param option for gotosleep (right now everything central)
+    remindme
+    codenames
+    chatgpt

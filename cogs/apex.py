@@ -21,8 +21,10 @@ class Apex(commands.Cog):
     async def map(self, ctx: commands.Context):
         time_passed =  datetime.datetime.now(datetime.timezone.utc) - START_DATE
         index = time_passed.days % 3
-        hours_remaining = 24 - (time_passed.seconds // 3600)
-        minutes_remaining = 60 - ((time_passed.seconds % 3600) // 60)
+        TWENTY_FOUR_HOURS_IN_SECONDS = 86400
+        total_seconds_remaining = TWENTY_FOUR_HOURS_IN_SECONDS - time_passed.seconds
+        hours_remaining = total_seconds_remaining // 3600
+        minutes_remaining = (total_seconds_remaining % 3600) // 60
         await ctx.send(f"Current ranked map: {SEASON_16_RANKED_MAPS[index]}  for **{hours_remaining} hours {minutes_remaining} minutes**")
 
     @commands.command()
@@ -51,5 +53,5 @@ class Apex(commands.Cog):
     #             stats = data['data']['segments'][0]['stats']
     #             await ctx.send(f"**{username}**'s stats:")
 
-async def setup(bot: commands.Bot):
+async def setup(bot: Zhenpai):
     await bot.add_cog(Apex(bot))

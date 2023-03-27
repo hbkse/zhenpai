@@ -4,6 +4,8 @@
 
 FROM python:3.8-slim
 
+ARG COMMIT_HASH
+
 WORKDIR /opt/app
 
 COPY requirements.txt ./
