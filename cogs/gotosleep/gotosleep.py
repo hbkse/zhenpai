@@ -197,7 +197,6 @@ class GoToSleep(commands.Cog):
                     await channel.set_permissions(gotosleep_role, view_channel=False)
                 except Exception as e:
                     log.error(f'Failed to set permissions for {channel} in {guild}: {e}')
-                    return
                 
     @update_roles.before_loop
     async def before_update_roles(self):
