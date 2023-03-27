@@ -117,7 +117,7 @@ class GoToSleep(commands.Cog):
             return
         
         title = f"{interaction.user.display_name}\'s gotosleep times"
-        embed = discord.Embed(title=title, description='The times you have set for sleeping and waking up. Times are in UTC (for now).', color=discord.Color.dark_teal())
+        embed = discord.Embed(title=title, description='The times you have set for sleeping and waking up. Times are in Central.', color=discord.Color.dark_teal())
         active_text = bool(record['active']) and 'gotosleep is currently on.' or 'gotosleep is currently off.'
         active_text += ' Use /snooze to turn it on or off.'
         embed.set_footer(text=active_text)
@@ -138,8 +138,12 @@ class GoToSleep(commands.Cog):
         try:
             the_entire_table = await self.db.get_all_users_global()
             log.info(f'Scanned the entire gotosleep table. Found {len(the_entire_table)} records.')
-            todays_day = datetime.datetime.today().strftime('%A').lower()
-            for record in the_entire_table:
+        except Exception as e:
+            log.error(f'Error scanning gotosleep table. {e}')
+            return    
+        todays_day = datetime.datetime.today().strftime('%A').lower()
+        for record in the_entire_table:
+            try:
                 start = record[todays_day + '_start_time']
                 end = record[todays_day + '_end_time']
                 guild_id = record['guild_id']
@@ -165,9 +169,9 @@ class GoToSleep(commands.Cog):
                     if role in member.roles:
                         log.info(f'Removing role from {member} in {guild}.')
                         await member.remove_roles(role)
-        except Exception as e:
-            log.error(f'Error in gotosleep update_roles: {e}')
-            log.error(f'Related Record: {record}')
+            except Exception as e:
+                log.error(f'Error in gotosleep update_roles loop: {e}')
+                log.error(f'Related Record: {record}')
 
     async def _set_up_role_and_channel_permissions_if_needed(self, guild: discord.Guild) -> None:
         """ Create the gotosleep role and set permission override for all existing channels. """
