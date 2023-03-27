@@ -3,6 +3,6 @@ CREATE TABLE remindme (
   guild_id BIGINT,
   user_id BIGINT NOT NULL,
   channel_id BIGINT,
-  remind_time TIMESTAMPTZ NOT NULL,
+  remind_time TIMESTAMP NOT NULL,
   content VARCHAR(4800) NOT NULL
 );

@@ -1,0 +1,3 @@
+current issues
+    gotosleep doesnt update channel permissions in teamspeak serv (is it a rate limit? or do i just need to restart)
+    need to catch exceptions in background tasks

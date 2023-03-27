@@ -22,8 +22,8 @@ class GoToSleep(commands.Cog):
         self.bot = bot
         self.db = GoToSleepDb(self.bot.db_pool)
         self.update_roles.start() 
-        self.update_roles.add_exception_type(asyncpg.PostgresConnectionError)
-
+        # lmao
+        self.update_roles.add_exception_type(AttributeError)
 
     def cog_unload(self):
         self.update_roles.cancel()
@@ -102,7 +102,6 @@ class GoToSleep(commands.Cog):
         Check if it's time to add or remove the gotosleep role.
         """
         try:
-
             the_entire_table = await self.db.get_all_users_global()
             log.info(f'Scanned the entire gotosleep table. Found {len(the_entire_table)} records.')
             todays_day = datetime.datetime.today().strftime('%A').lower()
@@ -133,7 +132,7 @@ class GoToSleep(commands.Cog):
             log.error(f'Error in gotosleep update_roles: {e}')
             log.info(record)
 
-    async def _set_up_role_and_channel_permissions(self, guild: discord.Guild) -> None:
+    async def _set_up_role_and_channel_permissions_if_needed(self, guild: discord.Guild) -> None:
         """ Create the gotosleep role and set permission override for all existing channels. """
 
         # create role if it doesn't exist
@@ -145,15 +144,22 @@ class GoToSleep(commands.Cog):
                 log.info(f'Failed to create gotosleep role in {guild}')
                 return
             
-        # set permissions every time, in case new channels have been created
+        # set permissions if channel doesn't have it
         for channel in guild.channels:
-            await channel.set_permissions(gotosleep_role, view_channel=False)
-
+            # if gotosleep can view this channel, set it to false
+            if channel.permissions_for(gotosleep_role).view_channel:
+                try:
+                    log.info(f'Setting permissions for {channel} in {guild}')
+                    await channel.set_permissions(gotosleep_role, view_channel=False)
+                except:
+                    log.info(f'Failed to set permissions for {channel} in {guild}')
+                    return
+                
     @update_roles.before_loop
     async def before_update_roles(self):
         await self.bot.wait_until_ready()
         for guild in self.bot.guilds:
-            await self._set_up_role_and_channel_permissions(guild)
+            await self._set_up_role_and_channel_permissions_if_needed(guild)
         log.info("Starting gotosleep role update loop")
 
     @update_roles.after_loop
