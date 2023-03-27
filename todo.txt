@@ -1,12 +1,15 @@
 current issues
-    need to save timestamps into dbs as utc+0 
-    kick people out of voice in gotosleep when the time comes 
-    gotosleep: need to add an option to dm the bot and force remove your role
-    gotosleep: removing the role from everyone when the bot is down
+    gotosleep
+        sometimes the bot doesnt have permissions to give the role, dont want to give admin but can I just make this work?
 
 potential stuff to work on
-    add timezone param option for gotosleep (right now everything central)
-    move timezone handling code to a utils file (will need it for remindme stuff too)
+    gotosleep
+        kick people out of voice in gotosleep when the time comes 
+        need to add an option to dm the bot and force remove your role
+        removing the role from everyone when the update loop closes? (should probably keep some of this in memory)
+            guess this may not be an issue as long as the bot reconnects and scans the list again
+        add timezone param option for gotosleep (right now everything central)
+        move timezone handling code to a utils file (will need it for remindme stuff too)
     remindme
     codenames
     chatgpt

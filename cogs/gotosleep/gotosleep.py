@@ -135,6 +135,7 @@ class GoToSleep(commands.Cog):
         """
         Check if it's time to add or remove the gotosleep role.
         """
+        # Reminder that in order for this to work, the bot's managed role must be higher than the gotosleep role.
         try:
             the_entire_table = await self.db.get_all_users_global()
             log.info(f'Scanned the entire gotosleep table. Found {len(the_entire_table)} records.')
@@ -169,6 +170,8 @@ class GoToSleep(commands.Cog):
                     if role in member.roles:
                         log.info(f'Removing role from {member} in {guild}.')
                         await member.remove_roles(role)
+            except discord.Forbidden:
+                log.error(f'Unable to update role for {member} in {guild}. Missing permissions.')
             except Exception as e:
                 log.error(f'Error in gotosleep update_roles loop: {e}')
                 log.error(f'Related Record: {record}')
