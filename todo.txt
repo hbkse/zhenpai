@@ -13,3 +13,4 @@ potential stuff to work on
     remindme
     codenames
     chatgpt
+    can probably move the flyway migration into the dockerfile
