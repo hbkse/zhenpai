@@ -3,6 +3,7 @@ from discord.ext import commands
 import logging
 import subprocess
 import config
+from bot import Zhenpai
 
 from typing import Optional
 
@@ -11,7 +12,7 @@ log: logging.Logger = logging.getLogger(__name__)
 class Admin(commands.Cog):
     """Admin commands for managing the bot"""
 
-    def __init__(self, bot: commands.Bot):
+    def __init__(self, bot: Zhenpai):
         self.bot = bot
 
     @commands.command(hidden=True)
@@ -95,5 +96,5 @@ class Admin(commands.Cog):
         commands = await self.bot.tree.sync(guild=None)
         await ctx.send(f'Successfully synced {len(commands)} commands')
 
-async def setup(bot: commands.Bot):
+async def setup(bot: Zhenpai):
     await bot.add_cog(Admin(bot))

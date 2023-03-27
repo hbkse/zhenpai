@@ -21,7 +21,9 @@ class GoToSleep(commands.Cog):
     def __init__(self, bot: Zhenpai):
         self.bot = bot
         self.db = GoToSleepDb(self.bot.db_pool)
-        self.update_roles.start()  
+        self.update_roles.start() 
+        self.update_roles.add_exception_type(asyncpg.PostgresConnectionError)
+
 
     def cog_unload(self):
         self.update_roles.cancel()
@@ -99,33 +101,37 @@ class GoToSleep(commands.Cog):
         """
         Check if it's time to add or remove the gotosleep role.
         """
+        try:
 
-        the_entire_table = await self.db.get_all_users_global()
-        log.info(f'Scanned the entire gotosleep table. Found {len(the_entire_table)} records.')
-        todays_day = datetime.datetime.today().strftime('%A').lower()
-        for record in the_entire_table:
-            start = record[todays_day + '_start_time']
-            end = record[todays_day + '_end_time']
-            guild_id = record['guild_id']
-            user_id = record['user_id']
-            active = record['active']
+            the_entire_table = await self.db.get_all_users_global()
+            log.info(f'Scanned the entire gotosleep table. Found {len(the_entire_table)} records.')
+            todays_day = datetime.datetime.today().strftime('%A').lower()
+            for record in the_entire_table:
+                start = record[todays_day + '_start_time']
+                end = record[todays_day + '_end_time']
+                guild_id = record['guild_id']
+                user_id = record['user_id']
+                active = record['active']
 
-            guild = self.bot.get_guild(guild_id)
-            member = guild.get_member(user_id)
-            role = self._get_gotosleep_role(guild)
+                guild = self.bot.get_guild(guild_id)
+                member = guild.get_member(user_id)
+                role = self._get_gotosleep_role(guild)
 
-            # if any of these are true, let's just remove the role to be safe
-            if not active or start is None or end is None:
-                log.info(f'Removing role from {member} in {guild}.')
-                await member.remove_roles(role)
-                continue
+                # if any of these are true, let's just remove the role to be safe
+                if not active or start is None or end is None:
+                    log.info(f'Removing role from {member} in {guild}.')
+                    await member.remove_roles(role)
+                    continue
 
-            if self._is_time_inbetween(datetime.datetime.now().time(), start, end):
-                log.info(f'Adding role to {member} in {guild}.')
-                await member.add_roles(role)
-            else:
-                log.info(f'Removing role from {member} in {guild}.')
-                await member.remove_roles(role)
+                if self._is_time_inbetween(datetime.datetime.now().time(), start, end):
+                    log.info(f'Adding role to {member} in {guild}.')
+                    await member.add_roles(role)
+                else:
+                    log.info(f'Removing role from {member} in {guild}.')
+                    await member.remove_roles(role)
+        except Exception as e:
+            log.error(f'Error in gotosleep update_roles: {e}')
+            log.info(record)
 
     async def _set_up_role_and_channel_permissions(self, guild: discord.Guild) -> None:
         """ Create the gotosleep role and set permission override for all existing channels. """
@@ -149,6 +155,10 @@ class GoToSleep(commands.Cog):
         for guild in self.bot.guilds:
             await self._set_up_role_and_channel_permissions(guild)
         log.info("Starting gotosleep role update loop")
+
+    @update_roles.after_loop
+    async def after_update_roles(self):
+        log.info("Stopping gotosleep role update loop")
 
     # TODO: need to set up event to update permissions when new channel is created?
     # TODO: need to add an option to dm the bot and force remove your role

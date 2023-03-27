@@ -1,5 +1,6 @@
 import discord
 from discord.ext import commands
+from bot import Zhenpai
 import logging
 
 log: logging.Logger = logging.getLogger(__name__)
@@ -7,7 +8,7 @@ log: logging.Logger = logging.getLogger(__name__)
 class Misc(commands.Cog):
     """Miscellaneous commands."""
 
-    def __init__(self, bot: commands.Bot):
+    def __init__(self, bot: Zhenpai):
         self.bot = bot
 
     @commands.command()
@@ -18,5 +19,5 @@ class Misc(commands.Cog):
     async def echo(self, ctx: commands.Context, content):
         await ctx.send(content)
 
-async def setup(bot: commands.Bot):
+async def setup(bot: Zhenpai):
     await bot.add_cog(Misc(bot))
