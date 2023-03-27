@@ -4,6 +4,7 @@ import logging
 import config
 from aiohttp import ClientSession
 import asyncpg
+import datetime
 
 from typing import Optional
 
@@ -39,6 +40,7 @@ class Zhenpai(commands.Bot):
         self.http_client = http_client
         self.db_pool = db_pool
         self.testing_guild_id = testing_guild_id or config.TESTING_GUILD_ID
+        self.start_time = datetime.datetime.now()
 
     async def on_ready(self):
         log.info('Logged in as: %s', self.user)

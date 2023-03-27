@@ -3,6 +3,7 @@ from discord.ext import commands
 import logging
 import subprocess
 import config
+import datetime
 from bot import Zhenpai
 
 from typing import Optional
@@ -21,7 +22,9 @@ class Admin(commands.Cog):
         message = [
             f'Logged in as: {self.bot.user}',
             f'Discord.py version: {discord.__version__}',
-            f'Commit hash: {config.COMMIT_HASH}'
+            f'Commit hash: {config.COMMIT_HASH}',
+            f'Server time: {datetime.datetime.now()}',
+            f'Bot uptime: {datetime.datetime.now() - self.bot.start_time}'
         ]
         log.info("Debug command used.")
 

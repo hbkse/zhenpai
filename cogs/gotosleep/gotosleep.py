@@ -33,13 +33,17 @@ class GoToSleep(commands.Cog):
 
         return discord.utils.get(guild.roles, name=GOTOSLEEP_ROLE_NAME) 
     
-    def _convert_time(self, time: str) -> datetime.time:
-        """ Convert the time from a string to an datetime. """
+    def _convert_time_to_utc(self, time_str: str, utcoff: datetime.timedelta) -> datetime.time:
+        """ Convert the time from a string to utc naive datetime. """
 
-        # regex for "23:30"
-        time_regex = re.compile(r'^([01]\d|2[0-3]):([0-5]\d)$')
-        hour, minute = map(int, time_regex.match(time).groups())
-        return datetime.time(hour, minute)
+        # regex for "0:00 to 23:59"
+        time_regex = re.compile(r'^([0-9]|[01]\d|2[0-3]):([0-5]\d)$')
+        hour, minute = map(int, time_regex.match(time_str).groups())
+        time = datetime.time(hour, minute)
+
+        # convert to datetime, add utc offset, then convert back to time
+        today = datetime.date.today()
+        return (datetime.datetime.combine(today, time) + utcoff).time()
     
     def _is_time_inbetween(self, time: datetime.time, start: datetime.time, end: datetime.time) -> bool:
         """ Check if a time is inbetween two other times, including wrapping around. """
@@ -67,8 +71,15 @@ class GoToSleep(commands.Cog):
         """ Set the time to sleep at. Bot will automatically assign the gotosleep role to you at the specified time. """
 
         await self._setup_new_user_if_needed(interaction)
-        converted_start_time = self._convert_time(sleep_time)
-        converted_end_time = self._convert_time(wake_time)
+        try:
+            converted_start_time = self._convert_time(sleep_time, interaction.created_at.utcoffset())
+            converted_end_time = self._convert_time(wake_time, interaction.created_at.utcoffset())
+        except Exception as e:
+            log.error(f'{e}')
+            log.error(f'Unable to read the times provided. {sleep_time} {wake_time}')
+            await interaction.response.send_message('Unable to read the times provided. Please use 24 hour time. ex. 00:00 to 23:59', ephemeral=True)
+            return
+        
         if day is None or day == 'All':
             await self.db.update_all_times(interaction.user.id, interaction.guild_id, converted_start_time, converted_end_time)
         else:
@@ -76,12 +87,19 @@ class GoToSleep(commands.Cog):
         await interaction.response.send_message(f'Successfully set times.', ephemeral=True)
 
     @app_commands.command()
-    async def snooze(self, interaction: discord.Interaction, on_or_off: bool = False):
+    async def snooze(self, interaction: discord.Interaction):
         """ Deactivate gotosleep until you turn it back on. """
 
         await self._setup_new_user_if_needed(interaction)
-        await self.db.set_user_active(interaction.user.id, interaction.guild.id, on_or_off)
-        await interaction.response.send_message('gotosleep is now off.', ephemeral=True)
+        record = await self.db.get_by_user_id(interaction.user.id, interaction.guild.id)
+        if record:
+            currently_active = record['active']
+
+        await self.db.set_user_active(interaction.user.id, interaction.guild.id, not currently_active)
+        if currently_active:
+            await interaction.response.send_message('gotosleep is now off.', ephemeral=True)
+        else:
+            await interaction.response.send_message('gotosleep is now on.', ephemeral=True)
 
     @app_commands.command()
     async def display(self, interaction: discord.Interaction):
@@ -89,8 +107,10 @@ class GoToSleep(commands.Cog):
 
         await self._setup_new_user_if_needed(interaction)
         record = await self.db.get_by_user_id(interaction.user.id, interaction.guild.id)
-        embed = discord.Embed(title='gotosleep', description='The times you have set for sleeping and waking up.')
+        title = f"{interaction.user.display_name}\'s gotosleep times"
+        embed = discord.Embed(title=title, description='The times you have set for sleeping and waking up. Times are in UTC (for now).', color=discord.Color.dark_teal())
         active_text = bool(record['active']) and 'gotosleep is currently on.' or 'gotosleep is currently off.'
+        active_text += ' Use /snooze to turn it on or off.'
         embed.set_footer(text=active_text)
         for day in DAY_OPTIONS[1:]:
             embed.add_field(name=day, value=f'{record[day.lower() + "_start_time"]} - {record[day.lower() + "_end_time"]}')
@@ -165,8 +185,3 @@ class GoToSleep(commands.Cog):
     @update_roles.after_loop
     async def after_update_roles(self):
         log.info("Stopping gotosleep role update loop")
-
-    # TODO: need to set up event to update permissions when new channel is created?
-    # TODO: need to add an option to dm the bot and force remove your role
-    # TODO: removing the role from everyone when the bot is down
-    # TODO: need to skip admins? cant believe the task crashes with 403

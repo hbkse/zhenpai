@@ -1,3 +1,10 @@
 current issues
-    gotosleep doesnt update channel permissions in teamspeak serv (is it a rate limit? or do i just need to restart)
-    need to catch exceptions in background tasks
+    need to save timestamps into dbs as utc+0 
+    kick people out of voice in gotosleep when the time comes 
+    gotosleep: need to add an option to dm the bot and force remove your role
+    gotosleep: removing the role from everyone when the bot is down
+
+new features
+    remindme
+    codenames
+    chatgpt
