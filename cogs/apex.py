@@ -6,7 +6,9 @@ from bot import Zhenpai
 
 log: logging.Logger = logging.getLogger(__name__)
 
-SEASON_16_RANKED_MAPS = ["**World's Edge** 🏙️🔥", "**Storm Point** ⛱️🐺", "**Broken Moon** 💩🌙"]
+
+# SEASON_16_RANKED_MAPS = ["**World's Edge** 🏙️🔥", "**Storm Point** ⛱️🐺", "**Broken Moon** 💩🌙"]
+SEASON_16_RANKED_MAPS = ["**Olympus** 🌌🔬", "**Storm Point** ⛱️🐺", "**Broken Moon** 💩🌙"]
 START_DATE = datetime.datetime(2023, 3, 19, 13 + 5, tzinfo=datetime.timezone.utc) # 3/19 1PM UTC+5, WORLD'S EDGE
 SEASON_16_SPLIT_1_END_DATE = datetime.datetime(2023, 4, 4, 13 + 5, tzinfo=datetime.timezone.utc) # 4/4 1PM UTC+5
 SEASON_16_SPLIT_2_END_DATE = datetime.datetime(2023, 5, 9, 13 + 5, tzinfo=datetime.timezone.utc) # 5/9 1PM UTC+5

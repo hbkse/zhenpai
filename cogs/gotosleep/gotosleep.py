@@ -216,3 +216,8 @@ class GoToSleep(commands.Cog):
         guild = self.bot.get_guild(guild_id)
         await self._set_up_role_and_channel_permissions_if_needed(guild)
         await ctx.send('Done.')
+
+    @commands.command()
+    async def timeouttest(self, ctx: commands.Context):
+        """ Test the timeout. """
+        await ctx.author.timeout(datetime.timedelta(seconds=10))
