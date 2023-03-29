@@ -220,4 +220,4 @@ class GoToSleep(commands.Cog):
     @commands.command()
     async def timeouttest(self, ctx: commands.Context):
         """ Test the timeout. """
-        await ctx.author.timeout(datetime.timedelta(seconds=10))
+        await ctx.author.timeout(datetime.timedelta(seconds=45))
