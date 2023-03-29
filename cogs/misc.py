@@ -28,7 +28,7 @@ class Misc(commands.Cog):
             prev_message = reply_msg
         else:
             prev_message = [message async for message in ctx.channel.history(limit=2)][1]
-        content = ''.join(prev_message.content.split(" ")[remove:])
+        content = ' '.join(prev_message.content.split(" ")[remove:])
         out = f"why are you, as a man, {content}"
         await ctx.send(out)
 
