@@ -23,11 +23,13 @@ class Apex(commands.Cog):
     async def map(self, ctx: commands.Context):
         time_passed =  datetime.datetime.now(datetime.timezone.utc) - START_DATE
         index = time_passed.days % 3
+        current_map = SEASON_16_RANKED_MAPS[index]
+        next_map = SEASON_16_RANKED_MAPS[(index + 1) % 3]
         TWENTY_FOUR_HOURS_IN_SECONDS = 86400
         total_seconds_remaining = TWENTY_FOUR_HOURS_IN_SECONDS - time_passed.seconds
         hours_remaining = total_seconds_remaining // 3600
         minutes_remaining = (total_seconds_remaining % 3600) // 60
-        await ctx.send(f"Current ranked map: {SEASON_16_RANKED_MAPS[index]}  for **{hours_remaining} hours {minutes_remaining} minutes**")
+        await ctx.send(f"Current ranked map is {current_map}  for **{hours_remaining} hours {minutes_remaining} minutes**. Next map is {next_map}")
 
     @commands.command()
     async def split(self, ctx: commands.Context):
