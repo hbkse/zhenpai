@@ -22,7 +22,6 @@ class Misc(commands.Cog):
 
     @commands.command()
     async def asaman(self, ctx: commands.Context, remove: Optional[int] = 0):
-        # get message content from reply
         if ctx.message.reference and (reply_msg := ctx.message.reference.resolved):
             prev_message = reply_msg
         else:

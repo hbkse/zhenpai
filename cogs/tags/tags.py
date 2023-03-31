@@ -42,6 +42,16 @@ class Tags(commands.Cog):
         await self.db.update_tag(tag_name, content, ctx.guild.id, ctx.author.id)
         await ctx.send(f'Tag **{tag_name}** updated.')
 
+    @commands.command()
+    async def delete(self, ctx: commands.Context, tag_name: str) -> None:
+        """ Delete a tag """
+
+        res = await self.db.delete_tag(tag_name, ctx.guild.id)
+        if res:
+            await ctx.send(f'Tag **{tag_name}** deleted.')
+        else:   
+            await ctx.send(f"Tag **{tag_name}** doesn't exist")
+
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
         """ Check messages for tags """

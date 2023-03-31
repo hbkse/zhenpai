@@ -30,3 +30,9 @@ class TagsDb():
             UPDATE tags SET content = $2, user_id = $4 WHERE tag = $1 AND guild_id = $3
         """
         return await self.pool.execute(query, tag_name, content, guild_id, user_id)
+    
+    async def delete_tag(self, tag_name: str, guild_id: int):
+        query = """
+            DELETE FROM tags WHERE tag = $1 AND guild_id = $2
+        """
+        return await self.pool.execute(query, tag_name, guild_id)
