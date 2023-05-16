@@ -3,6 +3,7 @@ from discord.ext import commands
 import logging
 from .db import TagsDb
 from bot import Zhenpai
+from ..helpers import pagination
 
 log: logging.Logger = logging.getLogger(__name__)
 
@@ -51,6 +52,19 @@ class Tags(commands.Cog):
             await ctx.send(f'Tag **{tag_name}** deleted.')
         else:   
             await ctx.send(f"Tag **{tag_name}** doesn't exist")
+
+    @commands.command()
+    async def taglist(self, ctx: commands.Context) -> None:
+        """ List all tags """
+
+        tags = await self.db.get_all_tags_in_guild(ctx.guild.id)
+        guild_name = ctx.guild.name
+        title = f"Tags for {guild_name}"
+        if tags:
+            tag_list = [tag['tag'] for tag in tags]
+            await pagination.Paginator(ctx, tag_list, title).show_page()
+        else:
+            await ctx.send('No tags found')
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
