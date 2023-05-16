@@ -22,8 +22,9 @@ class Paginator(View):
         item_slice = self.items[self.current_page * self.items_per_page : (self.current_page + 1) * self.items_per_page]
         embed = discord.Embed(title=self.title)
         embed.set_footer(text=f"Page {self.current_page + 1} of {self._get_max_pages()}")
-        for item in item_slice:
-            embed.add_field(name="", value=item)
+        # current formatting is just one entry and new lines, could revisit this once I have other things to paginate
+        items = "\n".join(item_slice)
+        embed.add_field(name="", value=items)
         return embed
     
     def _update_buttons(self):
