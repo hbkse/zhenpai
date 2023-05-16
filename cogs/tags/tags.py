@@ -62,7 +62,7 @@ class Tags(commands.Cog):
         title = f"Tags for {guild_name}"
         if tags:
             tag_list = [tag['tag'] for tag in tags]
-            await pagination.Paginator(ctx, tag_list, title).show_page()
+            await pagination.Paginator(ctx, tag_list, title).show()
         else:
             await ctx.send('No tags found')
 
