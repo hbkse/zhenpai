@@ -61,6 +61,10 @@ class Zhenpai(commands.Bot):
             return await ctx.send('Invalid argument(s).')
         elif isinstance(error, commands.MissingRequiredArgument):
             return await ctx.send('Missing argument(s).')
+        elif isinstance(error, commands.BotMissingPermissions):
+            return await ctx.send('I don\'t have permissions in this server to do that.')
+        elif isinstance(error, commands.CommandInvokeError) and isinstance(error.original, discord.errors.Forbidden):
+            return await ctx.send('I don\'t have permissions in this server to do that (probably).')
         elif hasattr(ctx.command, "on_error"):
             return
 
@@ -68,7 +72,7 @@ class Zhenpai(commands.Bot):
             if commands.Cog._get_overridden_method(ctx.cog.cog_command_error) is not None:
                 return
 
-        log.warning('%s - %s', ctx.message.content, error)
+        log.warning('%s - %s - %s', ctx.message.content, error, type(error))
     
     async def on_message(self, message: discord.Message) -> None:
         if message.author.bot:
