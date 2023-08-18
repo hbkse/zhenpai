@@ -33,10 +33,11 @@ class RemindMe(commands.Cog):
     @commands.command()
     async def remindme(self, ctx: commands.Context, time: str, *, message: str):
         """Remind me to do something in the future."""
+        await ctx.send(f"uhh, I'll finish this later.", ephemeral=True)
 
-        converted_time = self._convert_time(time)
-        await self.db.add_reminder(ctx, converted_time, message)
-        await ctx.send(f"Ok, I'll remind you to {message} at {converted_time}.", ephemeral=True)
+        # converted_time = self._convert_time(time)
+        # await self.db.add_reminder(ctx, converted_time, message)
+        # await ctx.send(f"Ok, I'll remind you to {message} at {converted_time}.", ephemeral=True)
     
     @tasks.loop(minutes=REMINDER_LOOP_MINUTES)
     async def check_reminders(self):
