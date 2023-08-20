@@ -1,5 +1,8 @@
 ## history
 
+So that I can remember why this doesnt make sense the next time I check it
+
+```
 the first iteration:
     create empty role called "gotosleep"
     set view_channel=False role override on every channel
@@ -27,3 +30,4 @@ the fourth iteration:
 
 the fifth iteration:
     as a fallback, for admins/server owner, have the bot dm the person if they're caught sending messages or sitting in a vc
+```
