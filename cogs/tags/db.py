@@ -13,6 +13,12 @@ class TagsDb():
         """
         return await self.pool.fetchrow(query, tag_name, guild_id)
     
+    async def get_tag(self, tag_name: str):
+        query = """
+            SELECT * FROM tags WHERE tag = $1
+        """
+        return await self.pool.fetchrow(query, tag_name)
+    
     async def get_all_tags_in_guild(self, guild_id: int):
         query = """
             SELECT * FROM tags WHERE guild_id = $1

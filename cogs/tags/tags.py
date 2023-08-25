@@ -76,7 +76,9 @@ class Tags(commands.Cog):
         prefix = self.bot.command_prefix
         if message.content.startswith(prefix):
             first_token = message.content.split(' ')[0][len(prefix):]
-            record = await self.db.get_tag_by_guild(first_token, message.guild.id)
+            # record = await self.db.get_tag_by_guild(first_token, message.guild.id)
+            # 08-25-23 switched this to query globally
+            record = await self.db.get_tag(first_token)
             if record:
                 await message.channel.send(record['content'])
         
