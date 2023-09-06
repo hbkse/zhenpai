@@ -24,9 +24,10 @@ class GoToSleep(commands.Cog):
     def __init__(self, bot: Zhenpai):
         self.bot = bot
         self.db = GoToSleepDb(self.bot.db_pool)
+        self.check_voice_channels.start()
 
     def cog_unload(self):
-        pass
+        self.check_voice_channels.cancel()
     
     def _read_time_str(self, time_str: str, utcoff: datetime.timedelta) -> datetime.time:
         """ Convert the time from a string to utc naive datetime. """
