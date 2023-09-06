@@ -128,7 +128,7 @@ class GoToSleep(commands.Cog):
         Check voice channels for people who should be asleep right now.
         """
         try:
-            the_entire_table = await self.db.get_all_users_global()
+            the_entire_table = await self.db.get_all_users()
             log.info(f'Scanned the entire gotosleep table. Found {len(the_entire_table)} records.')
         except Exception as e:
             log.error(f'Error scanning gotosleep table. {e}')
