@@ -1,3 +1,4 @@
+import random
 from typing import Optional
 from bot import Zhenpai
 
@@ -12,8 +13,8 @@ from .db import GoToSleepDb
 log: logging.Logger = logging.getLogger(__name__)
 
 DAY_OPTIONS = ['All', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-GOTOSLEEP_ROLE_NAME = 'zhenpai-gotosleep'
-POLLING_INTERVAL = 1
+DEROGATORY_PASSIVE_AGGRESSIVE_MESSAGES = ["Shouldn't you be asleep?", "Why are you still awake?", "You should be asleep right now.", "You're still awake?"]
+POLLING_INTERVAL_MINUTES = 1
 # THIS IS GUNNA BREAK BECAUSE OF DAYLIGHT SAVINGS TIME RIGHT? LOL, oh well one day I'll fix it
 CENTRAL_TIMEZONE_TIMEDELTA = datetime.timedelta(hours=-5) # UTC-5
 
@@ -23,17 +24,9 @@ class GoToSleep(commands.Cog):
     def __init__(self, bot: Zhenpai):
         self.bot = bot
         self.db = GoToSleepDb(self.bot.db_pool)
-        self.update_roles.start() 
-        # lmao
-        self.update_roles.add_exception_type(AttributeError)
 
     def cog_unload(self):
-        self.update_roles.cancel()
-
-    def _get_gotosleep_role(self, guild: discord.Guild) -> discord.Role:
-        """ Get the gotosleep role. """
-
-        return discord.utils.get(guild.roles, name=GOTOSLEEP_ROLE_NAME) 
+        pass
     
     def _read_time_str(self, time_str: str, utcoff: datetime.timedelta) -> datetime.time:
         """ Convert the time from a string to utc naive datetime. """
@@ -59,10 +52,10 @@ class GoToSleep(commands.Cog):
     async def _setup_new_user_if_needed(self, interaction: discord.Interaction):
         """ Add a new user to the database with default values. """
 
-        user_exists = await self.db.check_user_exists(interaction.user.id, interaction.guild.id)
+        user_exists = await self.db.check_user_exists(interaction.user.id)
         if not user_exists:
-            log.info(f'Adding new user {interaction.user.id} to database {interaction.guild.id}')
-            await self.db.add_user(interaction.user.id, interaction.guild.id)
+            log.info(f'Adding new user {interaction.user.id} to database')
+            await self.db.add_user(interaction.user.id)
 
     @app_commands.command()
     @app_commands.describe(
@@ -85,9 +78,9 @@ class GoToSleep(commands.Cog):
             return
         
         if day is None or day == 'All':
-            await self.db.update_all_times(interaction.user.id, interaction.guild_id, converted_start_time, converted_end_time)
+            await self.db.update_all_times(interaction.user.id, converted_start_time, converted_end_time)
         else:
-            await self.db.update_single_time(interaction.user.id, interaction.guild_id, day.lower(), converted_start_time, converted_end_time)
+            await self.db.update_single_time(interaction.user.id, day.lower(), converted_start_time, converted_end_time)
         await interaction.response.send_message(f'Successfully set times.', ephemeral=True)
 
     @app_commands.command()
@@ -95,11 +88,10 @@ class GoToSleep(commands.Cog):
         """ Activate/deactivate gotosleep. """
 
         await self._setup_new_user_if_needed(interaction)
-        record = await self.db.get_by_user_id(interaction.user.id, interaction.guild.id)
-        if record:
-            currently_active = record['active']
+        record = await self.db.get_by_user_id(interaction.user.id)
+        currently_active = record.get('active', False)
 
-        await self.db.set_user_active(interaction.user.id, interaction.guild.id, not currently_active)
+        await self.db.set_user_active(interaction.user.id, not currently_active)
         if currently_active:
             await interaction.response.send_message('gotosleep is now off.', ephemeral=True)
         else:
@@ -110,7 +102,7 @@ class GoToSleep(commands.Cog):
         """Displays currently set times"""
 
         await self._setup_new_user_if_needed(interaction)
-        record = await self.db.get_by_user_id(interaction.user.id, interaction.guild.id)
+        record = await self.db.get_by_user_id(interaction.user.id)
         if not record:
             # don't think this should ever happen, since we set up a new user if needed
             await interaction.response.send_message('You have not set any times yet. Use /sleep to set times.', ephemeral=True)
@@ -130,94 +122,47 @@ class GoToSleep(commands.Cog):
             embed.add_field(name=day, value=f'{converted_start_time} - {converted_end_time}')
         await interaction.response.send_message(embed=embed)
 
-    @tasks.loop(minutes=POLLING_INTERVAL)
-    async def update_roles(self):
+    @tasks.loop(minutes=POLLING_INTERVAL_MINUTES)
+    async def check_voice_channels(self):
         """
-        Check if it's time to add or remove the gotosleep role.
+        Check voice channels for people who should be asleep right now.
         """
-        # Reminder that in order for this to work, the bot's managed role must be higher than the gotosleep role.
         try:
             the_entire_table = await self.db.get_all_users_global()
             log.info(f'Scanned the entire gotosleep table. Found {len(the_entire_table)} records.')
         except Exception as e:
             log.error(f'Error scanning gotosleep table. {e}')
-            return    
+            return
         todays_day = datetime.datetime.today().strftime('%A').lower()
+        # scan table for active users
+        # i dont expect this to be a lot of records
+        people_who_should_be_asleep = set() 
         for record in the_entire_table:
             try:
                 start = record[todays_day + '_start_time']
                 end = record[todays_day + '_end_time']
-                guild_id = record['guild_id']
                 user_id = record['user_id']
                 active = record['active']
-
-                guild = self.bot.get_guild(guild_id)
-                member = guild.get_member(user_id)
-                role = self._get_gotosleep_role(guild)
-
-                # if any of these are true, let's just remove the role to be safe
-                if not active or start is None or end is None:
-                    if role in member.roles:
-                        log.info(f'Removing role from {member} in {guild}.')
-                        await member.remove_roles(role)
-                    continue
-
-                if self._is_time_inbetween(datetime.datetime.now().time(), start, end):
-                    if role not in member.roles:
-                        log.info(f'Adding role to {member} in {guild}.')
-                        await member.add_roles(role)
-                else:
-                    if role in member.roles:
-                        log.info(f'Removing role from {member} in {guild}.')
-                        await member.remove_roles(role)
-            except discord.Forbidden:
-                log.error(f'Unable to update role for {member} in {guild}. Missing permissions.')
+                if self._is_time_inbetween(datetime.datetime.now().time(), start, end) and active:
+                    people_who_should_be_asleep.add(user_id)
             except Exception as e:
                 log.error(f'Error in gotosleep update_roles loop: {e}')
                 log.error(f'Related Record: {record}')
+        log.info("People who should be asleep: " + str(people_who_should_be_asleep))
+        # check voice channels
+        visible_guilds = [guild for guild in self.bot.guilds if not guild.unavailable]
+        for guild in visible_guilds:
+            for vc in guild.voice_channels:
+                for member in vc.members:
+                    if member.id in people_who_should_be_asleep:
+                        await member.send(random.choice(DEROGATORY_PASSIVE_AGGRESSIVE_MESSAGES))
+                        log.info(f'Sent message to {member.display_name} in {guild.name} in {vc.name}')
 
-    async def _set_up_role_and_channel_permissions_if_needed(self, guild: discord.Guild) -> None:
-        """ Create the gotosleep role and set permission override for all existing channels. """
-
-        # create role if it doesn't exist
-        if not (gotosleep_role := self._get_gotosleep_role(guild)):
-            try:
-                await guild.create_role(name=GOTOSLEEP_ROLE_NAME)
-                log.info(f'Created gotosleep role in {guild}')
-            except Exception as e:
-                log.error(f'Failed to create gotosleep role in {guild}: {e}')
-                return
-            
-        # set permissions if channel doesn't have it
-        for channel in guild.channels:
-            # if gotosleep can view this channel, set it to false
-            if channel.permissions_for(gotosleep_role).view_channel:
-                try:
-                    log.info(f'Setting permissions for {channel} in {guild}')
-                    await channel.set_permissions(gotosleep_role, view_channel=False)
-                except Exception as e:
-                    log.error(f'Failed to set permissions for {channel} in {guild}: {e}')
-                
-    @update_roles.before_loop
-    async def before_update_roles(self):
+    @check_voice_channels.before_loop
+    async def before_check_voice_channels(self):
         await self.bot.wait_until_ready()
-        for guild in self.bot.guilds:
-            await self._set_up_role_and_channel_permissions_if_needed(guild)
-        log.info("Starting gotosleep role update loop")
+        log.info("Starting gotosleep update loop")
 
-    @update_roles.after_loop
-    async def after_update_roles(self):
-        log.info("Stopping gotosleep role update loop")
-
-    @commands.command()
-    @commands.is_owner()
-    async def forcesetup(self, ctx: commands.Context, guild_id: int):
-        """ Force setup for a guild. """
-        guild = self.bot.get_guild(guild_id)
-        await self._set_up_role_and_channel_permissions_if_needed(guild)
-        await ctx.send('Done.')
-
-    @commands.command()
-    async def timeouttest(self, ctx: commands.Context):
-        """ Test the timeout. """
-        await ctx.author.timeout(datetime.timedelta(seconds=45))
+    @check_voice_channels.after_loop
+    async def after_check_voice_channels(self):
+        log.info("Stopping gotosleep update loop")

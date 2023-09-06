@@ -1,0 +1,1 @@
+ALTER TABLE gotosleep DROP COLUMN guild_id;

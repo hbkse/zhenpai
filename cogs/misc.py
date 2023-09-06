@@ -1,5 +1,6 @@
 from typing import Optional
 import discord
+import datetime
 from discord.ext import commands
 from bot import Zhenpai
 import logging
@@ -29,6 +30,15 @@ class Misc(commands.Cog):
         content = ' '.join(prev_message.content.split(" ")[remove:])
         out = f"why are you, as a man, {content}"
         await ctx.send(out)
+
+    @commands.command()
+    async def timeout(self, ctx: commands.Context, minutes: int = 1):
+        """ Time yourself out. For your own good. """
+        if minutes > 1440:
+            await ctx.send("You can't time yourself out for more than 1440 minutes (24 hours). Just to be safe.")
+            return
+        await ctx.author.timeout(datetime.timedelta(minutes=minutes))
+        await ctx.send(f"Bye bye :wave:")
 
 async def setup(bot: Zhenpai):
     await bot.add_cog(Misc(bot))
