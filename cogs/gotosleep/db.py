@@ -17,7 +17,7 @@ class GoToSleepDb():
 
     async def add_user(self, user_id: int) -> str:
         query = """
-            INSERT INTO gotosleep (user_id, active) VALUES ($1, $2, true)
+            INSERT INTO gotosleep (user_id, active) VALUES ($1, true)
         """
         return await self.pool.execute(query, user_id)
 
@@ -35,7 +35,7 @@ class GoToSleepDb():
     
     async def update_single_time(self, user_id: int, day: str, start_time: datetime.time, end_time: datetime.time) -> str:
         query = """
-            UPDATE gotosleep SET {0} = $3, {1} = $4 WHERE user_id = $1
+            UPDATE gotosleep SET {0} = $2, {1} = $3 WHERE user_id = $1
         """
         query = query.format("{0}_start_time".format(day), "{0}_end_time".format(day))
         return await self.pool.execute(query, user_id, start_time, end_time)
@@ -46,11 +46,11 @@ class GoToSleepDb():
         query = """
             UPDATE gotosleep SET {0} WHERE user_id = $1
         """
-        query = query.format(', '.join(f'{day}_start_time = $3, {day}_end_time = $4' for day in DAYS))
+        query = query.format(', '.join(f'{day}_start_time = $2, {day}_end_time = $3' for day in DAYS))
         return await self.pool.execute(query, user_id, start_time, end_time)
     
     async def set_user_active(self, user_id: int, active: bool) -> str:
         query = """
-            UPDATE gotosleep SET active = $3 WHERE user_id = $1
+            UPDATE gotosleep SET active = $2 WHERE user_id = $1
         """
         return await self.pool.execute(query, user_id, active)
