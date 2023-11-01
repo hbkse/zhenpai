@@ -43,7 +43,7 @@ jobs:
       run: curl -fsSL cli.new | sh
 
     - name: Deploy
-      run: railway up
+      run: railway up --service zhenpai
       env: 
         RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         COMMIT_HASH: ${{ github.sha }}
