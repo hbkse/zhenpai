@@ -18,6 +18,10 @@ class DeleteLast(commands.Cog):
             await ctx.send("Please provide a valid number greater than 0.")
             return
 
+        if n > 100:
+            await ctx.send("bruh aint no way you tryna delete that much sounds kinda sus do it in batches of 100 so you dont wipe the entire channel")
+            return
+
         messages = []
         async for message in ctx.channel.history(limit=n + 1):
             messages.append(message)
