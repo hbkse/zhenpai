@@ -17,7 +17,8 @@ extensions = [
     'cogs.remindme',
     'cogs.gotosleep',
     'cogs.apex',
-    'cogs.admin'
+    'cogs.admin',
+    'cogs.deletelast'
 ]
 
 def setup_intents():
