@@ -12,9 +12,6 @@ class DeleteLast(commands.Cog):
     def __init__(self, bot: Zhenpai):
         self.bot = bot
 
-    def cog_unload(self):
-        self.check_reminders.cancel()
-
     @commands.command()
     async def deletelast(self, ctx, n: int):
         if n < 1:
