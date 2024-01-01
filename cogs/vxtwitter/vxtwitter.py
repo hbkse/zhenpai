@@ -19,8 +19,9 @@ class VxTwitter(commands.Cog):
     
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
-        if message.author.bot:
-            return
+        # i dont think infinite response loop is possible so don't need this
+        # if message.author.bot:
+        #     return
 
         # todo, update this to like "findall" and then "for each match, concat/send message"
         regex_pattern = re.compile(r'https://(?:twitter|x)\.com/(\w+)/status/(\d+)')
