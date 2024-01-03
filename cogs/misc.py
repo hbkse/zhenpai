@@ -60,7 +60,10 @@ class Misc(commands.Cog):
     @commands.command()
     async def roll(self, ctx, n: int = 100):
         roll = random.randint(1, n)
-        await ctx.send(f'🎲 You rolled a {roll}!')
+        if roll == 1:
+            await ctx.send(f'🎲 {ctx.author.nick} rolled a {roll}! Get Fucked!')
+        else:
+            await ctx.send(f'🎲 {ctx.author.nick} rolled a {roll}!')
 
 async def setup(bot: Zhenpai):
     await bot.add_cog(Misc(bot))
