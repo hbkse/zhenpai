@@ -21,7 +21,7 @@ class Tags(commands.Cog):
         existing_tags = await self.db.get_all_tags_in_guild(ctx.guild.id)
         existing_tag_names = [tag['tag'] for tag in existing_tags]
         if tag_name in existing_tag_names:
-            await ctx.send(f'Tag **{tag_name}** already exists')
+            await ctx.send(f'Tag **{tag_name}** already exists. Use !update to change it. I did this so you dont accidentally overwrite.')
             return
         if tag_name in self.bot.all_commands:
             await ctx.send(f'Tag **{tag_name}** conflicts with an existing command')
