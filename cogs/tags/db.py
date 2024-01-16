@@ -19,6 +19,12 @@ class TagsDb():
         """
         return await self.pool.fetchrow(query, tag_name)
     
+    async def get_all_tags(self):
+        query = """
+            SELECT * FROM tags
+        """
+        return await self.pool.fetch(query)
+    
     async def get_all_tags_in_guild(self, guild_id: int):
         query = """
             SELECT * FROM tags WHERE guild_id = $1
@@ -31,14 +37,14 @@ class TagsDb():
         """
         return await self.pool.execute(query, tag_name, content, guild_id, user_id)
     
-    async def update_tag(self, tag_name: str, content: str, guild_id: int, user_id: int):
+    async def update_tag(self, tag_name: str, content: str, user_id: int):
         query = """
-            UPDATE tags SET content = $2, user_id = $4 WHERE tag = $1 AND guild_id = $3
+            UPDATE tags SET content = $2, user_id = $3 WHERE tag = $1
         """
-        return await self.pool.execute(query, tag_name, content, guild_id, user_id)
+        return await self.pool.execute(query, tag_name, content, user_id)
     
-    async def delete_tag(self, tag_name: str, guild_id: int):
+    async def delete_tag(self, tag_name: str):
         query = """
-            DELETE FROM tags WHERE tag = $1 AND guild_id = $2
+            DELETE FROM tags WHERE tag = $1
         """
-        return await self.pool.execute(query, tag_name, guild_id)
+        return await self.pool.execute(query, tag_name)

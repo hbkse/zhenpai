@@ -18,7 +18,7 @@ class Tags(commands.Cog):
     async def save(self, ctx: commands.Context, tag_name: str, *, content: str) -> None:
         """ Save a tag """
 
-        existing_tags = await self.db.get_all_tags_in_guild(ctx.guild.id)
+        existing_tags = await self.db.get_all_tags()
         existing_tag_names = [tag['tag'] for tag in existing_tags]
         if tag_name in existing_tag_names:
             await ctx.send(f'Tag **{tag_name}** already exists. Use !update to change it. I did this so you dont accidentally overwrite.')
@@ -34,20 +34,20 @@ class Tags(commands.Cog):
     async def update(self, ctx: commands.Context, tag_name: str, *, content: str) -> None:
         """ Update an existing tag """
 
-        existing_tags = await self.db.get_all_tags_in_guild(ctx.guild.id)
+        existing_tags = await self.db.get_all_tags()
         existing_tag_names = [tag['tag'] for tag in existing_tags]
         if tag_name not in existing_tag_names:
             await ctx.send(f"Tag **{tag_name}** doesn't exist")
             return
 
-        await self.db.update_tag(tag_name, content, ctx.guild.id, ctx.author.id)
+        await self.db.update_tag(tag_name, content, ctx.author.id)
         await ctx.send(f'Tag **{tag_name}** updated.')
 
     @commands.command()
     async def delete(self, ctx: commands.Context, tag_name: str) -> None:
         """ Delete a tag """
 
-        res = await self.db.delete_tag(tag_name, ctx.guild.id)
+        res = await self.db.delete_tag(tag_name)
         if res:
             await ctx.send(f'Tag **{tag_name}** deleted.')
         else:   
@@ -57,7 +57,7 @@ class Tags(commands.Cog):
     async def taglist(self, ctx: commands.Context) -> None:
         """ List all tags """
 
-        tags = await self.db.get_all_tags_in_guild(ctx.guild.id)
+        tags = await self.db.get_all_tags()
         guild_name = ctx.guild.name
         title = f"Tags for {guild_name}"
         if tags:
