@@ -65,7 +65,7 @@ class Misc(commands.Cog):
         else:
             await ctx.send(f'🎲 {ctx.author.display_name} rolled a {roll}!')
 
-    @commands.command(aliases=['eddyreveal', 'kanav', 'days'])
+    @commands.command(aliases=['eddyreveal', 'kanav'])
     async def days(self, ctx):
         # central timezone should be UTC-6
         THE_DAY = datetime.datetime(2024, 2, 10, 6, tzinfo=datetime.timezone.utc)
