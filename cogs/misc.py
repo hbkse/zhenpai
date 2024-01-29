@@ -79,5 +79,15 @@ class Misc(commands.Cog):
         else:
             await ctx.send("uhhh")
 
+    @commands.Cog.listener()
+    async def on_message(self, message: discord.Message):
+        if message.author.bot:
+            return
+        
+        # based? on what?
+        if "based" in message.content and "based on" not in message.content:
+            await message.channel.send("on what?")
+
+
 async def setup(bot: Zhenpai):
     await bot.add_cog(Misc(bot))
