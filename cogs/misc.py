@@ -85,7 +85,7 @@ class Misc(commands.Cog):
             return
         
         # based? on what?
-        if "based" in message.content and "based on" not in message.content:
+        if message.content == "based" or (" based" in message.content and "based on" not in message.content):
             await message.channel.send("on what?")
 
 
