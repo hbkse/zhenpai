@@ -11,7 +11,8 @@ log: logging.Logger = logging.getLogger(__name__)
 # SEASON_16_RANKED_MAPS = ["**Olympus** 🌌🔬", "**Storm Point** ⛱️🐺", "**Broken Moon** 💩🌙"]
 # SEASON_17_RANKED_MAPS = ["**Olympus** 🌌🔬", "**King's Canyon** 💩💩", "**World's Edge** 🏙️🔥"]
 # SEASON_18_RANKED_MAPS = ["**Broken Moon** 💩🌙", "**King's Canyon** 💩💩", "**Olympus** 🌌🔬"]
-SEASON_19_RANKED_MAPS = ["**Storm Point** ⛱️🐺", "**Broken Moon** 💩🌙", "**Olympus** 🌌🔬"]
+# SEASON_19_RANKED_MAPS = ["**Storm Point** ⛱️🐺", "**Broken Moon** 💩🌙", "**Olympus** 🌌🔬"]
+SEASON_20_RANKED_MAPS = ["**Olympus** 🌌🔬", "**Storm Point** ⛱️🐺", "**World's Edge** 🏙️🔥"]
 # START_DATE = datetime.datetime(2023, 3, 19, 13 + 5, tzinfo=datetime.timezone.utc) # 3/19 1PM UTC+5, WORLD'S EDGE
 # SEASON_16_SPLIT_1_END_DATE = datetime.datetime(2023, 4, 4, 13 + 5, tzinfo=datetime.timezone.utc) # 4/4 1PM UTC+5
 # SEASON_16_SPLIT_2_END_DATE = datetime.datetime(2023, 5, 9, 13 + 5, tzinfo=datetime.timezone.utc) # 5/9 1PM UTC+5
@@ -19,8 +20,10 @@ SEASON_19_RANKED_MAPS = ["**Storm Point** ⛱️🐺", "**Broken Moon** 💩🌙
 # SEASON_17_END_DATE = datetime.datetime(2023, 6, 20, 12 + 5, tzinfo=datetime.timezone.utc) # 6/20 1PM UTC+5
 # SEASON_18_START_DATE = datetime.datetime(2023, 8, 8, 12 + 5, tzinfo=datetime.timezone.utc) # 8/8 1PM UTC+5
 # SEASON_18_END_DATE = datetime.datetime(2023, 10, 30, 12 + 5, tzinfo=datetime.timezone.utc) # 10/30 1PM UTC+5
-SEASON_19_START_DATE = datetime.datetime(2023, 10, 31, 12 + 5, tzinfo=datetime.timezone.utc) 
-SEASON_19_END_DATE = datetime.datetime(2024, 2, 13, 12 + 5, tzinfo=datetime.timezone.utc)
+# SEASON_19_START_DATE = datetime.datetime(2023, 10, 31, 12 + 5, tzinfo=datetime.timezone.utc) 
+# SEASON_19_END_DATE = datetime.datetime(2024, 2, 13, 12 + 5, tzinfo=datetime.timezone.utc)
+SEASON_20_START_DATE = datetime.datetime(2024, 2, 14, 12 + 5, tzinfo=datetime.timezone.utc) 
+SEASON_20_END_DATE = datetime.datetime(2024, 6, 13, 12 + 5, tzinfo=datetime.timezone.utc) # idk when it ends
 
 class Apex(commands.Cog):
     """Commands for Apex Legends"""
@@ -30,14 +33,14 @@ class Apex(commands.Cog):
 
     @commands.command()
     async def map(self, ctx: commands.Context):
-        if datetime.datetime.now(datetime.timezone.utc) > SEASON_19_END_DATE:
+        if datetime.datetime.now(datetime.timezone.utc) > SEASON_20_END_DATE:
             await ctx.send("season's over, need to update")
             return
 
-        time_passed =  datetime.datetime.now(datetime.timezone.utc) - SEASON_19_START_DATE
+        time_passed =  datetime.datetime.now(datetime.timezone.utc) - SEASON_20_START_DATE
         index = time_passed.days % 3
-        current_map = SEASON_19_RANKED_MAPS[index]
-        next_map = SEASON_19_RANKED_MAPS[(index + 1) % 3]
+        current_map = SEASON_20_RANKED_MAPS[index]
+        next_map = SEASON_20_RANKED_MAPS[(index + 1) % 3]
         TWENTY_FOUR_HOURS_IN_SECONDS = 86400
         total_seconds_remaining = TWENTY_FOUR_HOURS_IN_SECONDS - time_passed.seconds
         hours_remaining = total_seconds_remaining // 3600
@@ -48,8 +51,8 @@ class Apex(commands.Cog):
     async def split(self, ctx: commands.Context):
         now = datetime.datetime.now(datetime.timezone.utc)
 
-        if now < SEASON_19_END_DATE:
-            time_remaining = SEASON_19_END_DATE - now
+        if now < SEASON_20_END_DATE:
+            time_remaining = SEASON_20_END_DATE - now
         else:
             await ctx.send("season's over, need to update")
 
