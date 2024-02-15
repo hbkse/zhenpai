@@ -65,20 +65,6 @@ class Misc(commands.Cog):
         else:
             await ctx.send(f'🎲 {ctx.author.display_name} rolled a {roll}!')
 
-    @commands.command(aliases=['eddyreveal', 'kanav'])
-    async def days(self, ctx):
-        # central timezone should be UTC-6
-        THE_DAY = datetime.datetime(2024, 2, 10, 6, tzinfo=datetime.timezone.utc)
-        current_date = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=6)
-        delta = THE_DAY - current_date
-
-        if delta.days > 0:
-            await ctx.send(delta.days)
-        elif delta.days == 0:
-            await ctx.send("Today")
-        else:
-            await ctx.send("uhhh")
-
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
         if message.author.bot:

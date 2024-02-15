@@ -22,7 +22,7 @@ SEASON_20_RANKED_MAPS = ["**Olympus** 🌌🔬", "**Storm Point** ⛱️🐺", "
 # SEASON_18_END_DATE = datetime.datetime(2023, 10, 30, 12 + 5, tzinfo=datetime.timezone.utc) # 10/30 1PM UTC+5
 # SEASON_19_START_DATE = datetime.datetime(2023, 10, 31, 12 + 5, tzinfo=datetime.timezone.utc) 
 # SEASON_19_END_DATE = datetime.datetime(2024, 2, 13, 12 + 5, tzinfo=datetime.timezone.utc)
-SEASON_20_START_DATE = datetime.datetime(2024, 2, 14, 12 + 5, tzinfo=datetime.timezone.utc) 
+SEASON_20_START_DATE = datetime.datetime(2024, 2, 13, 12 + 5, tzinfo=datetime.timezone.utc) 
 SEASON_20_END_DATE = datetime.datetime(2024, 5, 6, 12 + 5, tzinfo=datetime.timezone.utc) # idk when it ends
 
 class Apex(commands.Cog):
