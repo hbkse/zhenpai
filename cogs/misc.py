@@ -69,9 +69,22 @@ class Misc(commands.Cog):
     async def on_message(self, message: discord.Message):
         if message.author.bot:
             return
-        
+
         # based? on what?
-        if message.content == "based" or (" based" in message.content and "based on" not in message.content):
+        based = "based"
+        not_based = ["on", "off"]
+        words = message.content.lower().split(" ")
+        
+        should_send_message = False
+        if based in words:
+            should_send_message = True
+            i = words.index(based)
+            if i + 1 < len(words):
+                next_word = words[i + 1]
+                if next_word in not_based:
+                    should_send_message = False
+
+        if should_send_message:
             await message.channel.send("on what?")
 
 
