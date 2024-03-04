@@ -18,7 +18,8 @@ extensions = [
     'cogs.gotosleep',
     'cogs.apex',
     'cogs.admin',
-    # 'cogs.vxtwitter'
+    # 'cogs.vxtwitter',
+    'cogs.saturday',
 ]
 
 def setup_intents():

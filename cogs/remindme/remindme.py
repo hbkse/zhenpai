@@ -58,8 +58,8 @@ class RemindMe(commands.Cog):
     @check_reminders.before_loop
     async def before_check_reminders(self):
         await self.bot.wait_until_ready()
-        log.info("Starting remindme update loop")
+        log.info(f"Starting {__name__} update loop")
 
     @check_reminders.after_loop
     async def after_check_reminders(self):
-        log.info("Stopping remindme update loop")
+        log.info(f"Stopping {__name__} update loop")

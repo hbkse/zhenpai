@@ -162,8 +162,8 @@ class GoToSleep(commands.Cog):
     @check_voice_channels.before_loop
     async def before_check_voice_channels(self):
         await self.bot.wait_until_ready()
-        log.info("Starting gotosleep update loop")
+        log.info(f"Starting {__name__} update loop")
 
     @check_voice_channels.after_loop
     async def after_check_voice_channels(self):
-        log.info("Stopping gotosleep update loop")
+        log.info(f"Stopping {__name__} update loop")
