@@ -72,7 +72,7 @@ class Misc(commands.Cog):
         gives you the current time in india elelelelele
         """
         india_timezone = pytz.timezone('Asia/Kolkata')
-        india_time = datetime.now(india_timezone)
+        india_time = datetime.datetime.now(india_timezone)
         formatted_time = india_time.strftime('%Y-%m-%d %H:%M:%S')
         await ctx.send(f'The current time in India is: {formatted_time}')
 
