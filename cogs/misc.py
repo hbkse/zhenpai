@@ -2,6 +2,7 @@ import random
 from typing import Optional
 import discord
 import datetime
+import pytz
 from discord.ext import commands
 from bot import Zhenpai
 import logging
@@ -64,6 +65,16 @@ class Misc(commands.Cog):
             await ctx.send(f'🎲 {ctx.author.display_name} rolled a {roll}! Get Fucked!')
         else:
             await ctx.send(f'🎲 {ctx.author.display_name} rolled a {roll}!')
+
+    @commands.command()
+    async def india(self, ctx):
+        """
+        gives you the current time in india elelelelele
+        """
+        india_timezone = pytz.timezone('Asia/Kolkata')
+        india_time = datetime.now(india_timezone)
+        formatted_time = india_time.strftime('%Y-%m-%d %H:%M:%S')
+        await ctx.send(f'The current time in India is: {formatted_time}')
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):

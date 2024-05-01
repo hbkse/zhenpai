@@ -3,4 +3,5 @@ aiohttp==3.7.4
 requests==2.24.0
 python-dotenv==1.0.0
 asyncpg==0.28.0
+pytz==2024.1
 # discord-ext-menus @ git+https://github.com/Rapptz/discord-ext-menus@8686b5d1bbc1d3c862292eb436ab630d6e9c9b53
