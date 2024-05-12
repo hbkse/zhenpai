@@ -7,6 +7,7 @@ from discord.ext import commands, tasks
 log: logging.Logger = logging.getLogger(__name__)
 
 NINE_AM_CENTRAL = datetime.time(hour=9, minute=0, tzinfo=datetime.timezone(datetime.timedelta(hours=-6)))
+SATURDAY_WEEKDAY = 5
 IMAGE_NAME = './cogs/saturday/Saturday.jpg'
 USER_ID = 118956121913425920
 
@@ -25,7 +26,7 @@ class Saturday(commands.Cog):
     @tasks.loop(time=NINE_AM_CENTRAL)
     async def my_task(self):
         # check if today is Saturday
-        if datetime.today().weekday() == 5:
+        if datetime.date.weekday() == SATURDAY_WEEKDAY:
             dm_channel = self.bot.get_user(USER_ID)
             await dm_channel.send(file=discord.File(IMAGE_NAME))
 
