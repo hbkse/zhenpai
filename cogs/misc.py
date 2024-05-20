@@ -73,8 +73,18 @@ class Misc(commands.Cog):
         """
         india_timezone = pytz.timezone('Asia/Kolkata')
         india_time = datetime.datetime.now(india_timezone)
-        formatted_time = india_time.strftime('%Y-%m-%d %H:%M:%S')
-        await ctx.send(f'The current time in India is: {formatted_time}')
+        formatted_time = india_time.strftime('%m-%d %H:%M:%S')
+        await ctx.send(f'The current datetime in India is: {formatted_time}')
+
+    @commands.command()
+    async def japan(self, ctx):
+        """
+        gives you the current time in japan elelelelele
+        """
+        jp_timezone = pytz.timezone('Asia/Tokyo')
+        jp_time = datetime.datetime.now(jp_timezone)
+        formatted_time = jp_time.strftime('%m-%d %H:%M:%S')
+        await ctx.send(f'The current datetime in Japan is: {formatted_time}')
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
