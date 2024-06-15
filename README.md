@@ -6,8 +6,16 @@ Currently hosting and deploying to [Railway](https://railway.app/)
 
 ## Running locally
 
+Requires at least python 3.8.
+
 Create your own `.env` file based on `.env.example`. You can create a bot and grab the token from the [Discord Developer Portal](https://discord.com/developers/applications)
 
-Install packages: `pip install --no-cache-dir -r requirements.txt`
+Create venv: `python -m venv myenv`
+
+Activate venv: `source myenv/bin/activate`
+
+Install packages: `pip install --no-cache-dir -U -r requirements.txt`
 
 Run: `python start.py`.
+
+Deactivate venv: `deactivate`

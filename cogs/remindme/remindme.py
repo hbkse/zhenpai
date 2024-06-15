@@ -5,6 +5,7 @@ import datetime
 from discord.ext import tasks, commands
 from bot import Zhenpai
 from .db import ReminderDb
+from .db import Reminder
 
 log: logging.Logger = logging.getLogger(__name__)
 
@@ -14,7 +15,7 @@ class RemindMe(commands.Cog):
     """ Remind me to do something in the future. """
 
     def __init__(self, bot: Zhenpai):
-        self.bot = bot
+        self.bot = bot  
         self.db = ReminderDb(self.bot.db_pool)
         self.check_reminders.start()
 
@@ -30,30 +31,48 @@ class RemindMe(commands.Cog):
         # parse relative times (in 6 minutes, in 1 hour, etc.)
         # parse absolute times (at 6:00, 6:00pm, etc.)
 
-    @commands.command()
-    async def remindme(self, ctx: commands.Context, time: str, *, message: str):
-        """Remind me to do something in the future."""
-        await ctx.send(f"uhh, I'll finish this later.", ephemeral=True)
+    @commands.command(hidden=True)
+    async def remind(self, ctx: commands.Context, target: str, time: str, *, message: str):
+        """ Command alias for remindme and remindus """
+        if target == "me":
+            await self.remind_me(ctx, time, message)
+        elif target == "us":
+            await self.remind_us(ctx, time, message)
 
-        # converted_time = self._convert_time(time)
-        # await self.db.add_reminder(ctx, converted_time, message)
-        # await ctx.send(f"Ok, I'll remind you to {message} at {converted_time}.", ephemeral=True)
+    @commands.command(name="remindme")
+    async def remind_me(self, ctx: commands.Context, time: str, *, message: str):
+        """Remind me to do something in the future. It will DM the user who issued the command. 
+        
+        Usage: !remindme <time> <message>
+        """
+
+        # this command is so much better as a slash command
+        pass
+    
+    @commands.command(name="remindus")
+    async def remind_us(self, ctx: commands.Context, time: str, *, message: str):
+        """Remind us to do something in the future. It will post in the channel where the command was issued. 
+        
+        Usage: !remindus <time> <message>
+        """
+
+        pass
     
     @tasks.loop(minutes=REMINDER_LOOP_MINUTES)
     async def check_reminders(self):
-        """ Check for reminders that need to be sent. """
+        """Polling loop that checks if any reminders need to be sent."""
 
-        reminders = await self.db.get_reminders_ordered()
-        for reminder in reminders:
-            if reminder['remind_time'] < datetime.datetime.now():
-                user = self.bot.get_user(reminder['user_id'])
-                if user:
-                    log.info(f"Sending reminder to {reminder['user_id']}: {reminder['content']}")
-                    await user.send(f"You told me to remind you: {reminder['content']}")
-                    log.info(f"Deleting reminder {reminder['id']}")
-                    await self.db.delete_reminder(reminder['id'])
-                else:
-                    log.error(f"Could not find user {reminder['user_id']} to send reminder to.")
+        active_reminders = await self.db.get_active_reminders()
+        for reminder in active_reminders:
+            log.info(f"Trying to send reminder {reminder.id}")
+            if reminder.is_private:
+                user = self.bot.get_user(reminder.user_id) # handle null user?
+                await user.send(f"{reminder.content}")
+            else:
+                channel = self.bot.get_channel(reminder.channel_id) # handle null channel?
+                # assert guild channel? 
+                await channel.send(f"{reminder.content}")
+            await self.db.mark_reminder_sent(reminder.id)
 
     @check_reminders.before_loop
     async def before_check_reminders(self):

@@ -11,7 +11,12 @@ BACKGROUND_TASK_LOOP_SECONDS = 15
 log: logging.Logger = logging.getLogger(__name__)
 
 class Spotify(commands.Cog):
-    """ For highlighting and hoisting people who are listening to Spotify """
+    """ For highlighting and hoisting people who are listening to Spotify.
+        
+        The idea here was to give people who are listening to Spotify as their discord activity 
+        a special role that was hoisted to the top of the member list. That way you could at a glance
+        on the sidebar click through to see what people are listening to.
+    """
 
     def __init__(self, bot: Zhenpai):
         self.bot = bot

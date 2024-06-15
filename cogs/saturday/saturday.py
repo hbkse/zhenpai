@@ -1,6 +1,7 @@
 import logging
 import discord
 import datetime
+from config import OWNER_ID
 from bot import Zhenpai
 from discord.ext import commands, tasks
 
@@ -9,8 +10,9 @@ log: logging.Logger = logging.getLogger(__name__)
 SEVEN_AM_CENTRAL = datetime.time(hour=7, minute=0, tzinfo=datetime.timezone(datetime.timedelta(hours=-6)))
 SATURDAY_WEEKDAY = 5
 IMAGE_NAME = './cogs/saturday/Saturday.jpg'
-USER_ID = 118956121913425920
+USER_ID_PLEASE_DONT_LOOK = OWNER_ID
 
+# why'd I add this rofl
 class Saturday(commands.Cog):
     """
     To remind us to do good things on Saturday.
@@ -27,7 +29,7 @@ class Saturday(commands.Cog):
     async def my_task(self):
         # check if today is Saturday
         if datetime.date.today().weekday() == SATURDAY_WEEKDAY:
-            dm_channel = self.bot.get_user(USER_ID)
+            dm_channel = self.bot.get_user(USER_ID_PLEASE_DONT_LOOK)
             await dm_channel.send(file=discord.File(IMAGE_NAME))
 
     @my_task.before_loop
