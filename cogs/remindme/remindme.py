@@ -1,8 +1,9 @@
 import logging
 
 import discord
-from datetime import datetime
 from discord.ext import tasks, commands
+from datetime import datetime, timezone
+import pytz
 import parsedatetime as pdt
 
 from bot import Zhenpai
@@ -11,6 +12,8 @@ from .db import ReminderDb
 log: logging.Logger = logging.getLogger(__name__)
 
 REMINDER_LOOP_MINUTES = 1
+
+central = pytz.timezone('US/Central')
 
 class RemindMe(commands.Cog):
     """ Remind me to do something in the future. """
@@ -24,19 +27,20 @@ class RemindMe(commands.Cog):
     def cog_unload(self):
         self.check_reminders.cancel()
 
-    def _convert_time(self, time: str) -> datetime:
+    def _convert_time(self, time: str, timezone=None) -> datetime:
         """ Convert time string to datetime object. """
 
         # discord doesnt have any way to exposing a user's timezone, so relative times are kinda awkward
         # unless I just only assume central time
-        next_time, parse_status = self.datetime_parser.parseDT(time, datetime.now())
+        timezone = central if not timezone else timezone
+        next_time, parse_status = self.datetime_parser.parseDT(time, datetime.now(timezone))
         return next_time if parse_status else None
 
     @commands.command(hidden=True)
     async def testdateparse(self, ctx: commands.Context, *, time: str):
         """ Test date parsing. """
         remind_time = self._convert_time(time)
-        await ctx.send(f"parsed time: {remind_time}")
+        await ctx.send(f"parsed time: {remind_time}   system now: {datetime.now()}    central now: {datetime.now(central)}")
 
     @commands.command(hidden=True)
     async def remind(self, ctx: commands.Context, target: str, *, message: str):
