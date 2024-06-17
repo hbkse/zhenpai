@@ -41,9 +41,9 @@ class ReminderDb():
     def __init__(self, pool: Pool):
         self.pool = pool
 
-    async def get_active_reminders(self, limit=10) -> List[Reminder]:
+    async def get_active_reminders(self, limit=5) -> List[Reminder]:
         query = """
-            SELECT * FROM remindme WHERE remind_time > NOW() AND deleted_on IS NULL AND sent_on IS NULL ORDER BY remind_time ASC LIMIT $1;
+            SELECT * FROM remindme WHERE remind_time <= NOW() AND deleted_on IS NULL AND sent_on IS NULL ORDER BY remind_time ASC LIMIT $1;
         """
         rows = await self.pool.fetch(query, limit)
         return [Reminder.from_row(row) for row in rows]
