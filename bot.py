@@ -67,6 +67,8 @@ class Zhenpai(commands.Bot):
             return await ctx.send('I don\'t have permissions in this server to do that.')
         elif isinstance(error, commands.CommandInvokeError) and isinstance(error.original, discord.errors.Forbidden):
             return await ctx.send('I don\'t have permissions in this server to do that (probably).')
+        elif isinstance(error, commands.CommandInvokeError) and isinstance(error.original, ValueError):
+            return await ctx.send('Something wrong with the command arguments (probably).')
         elif hasattr(ctx.command, "on_error"):
             return
 

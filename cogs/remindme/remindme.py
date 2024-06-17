@@ -28,19 +28,24 @@ class RemindMe(commands.Cog):
         self.check_reminders.cancel()
 
     def _convert_time(self, time: str, timezone=None) -> datetime:
-        """ Convert time string to datetime object. """
+        """ Convert time string to datetime object. 
+            Returns: UTC-0 datetime or None if parsing failed
+        """
 
         # discord doesnt have any way to exposing a user's timezone, so relative times are kinda awkward
-        # unless I just only assume central time
+        # here I just always assume user is in central timezone
         timezone = central if not timezone else timezone
-        next_time, parse_status = self.datetime_parser.parseDT(time, datetime.now(timezone))
-        return next_time if parse_status else None
+        timezone_adjusted_next_time, parse_status = self.datetime_parser.parseDT(time, datetime.now(timezone))
 
+        # return as utc
+        return timezone_adjusted_next_time.astimezone(pytz.utc) if parse_status else None
+        
+        
     @commands.command(hidden=True)
     async def testdateparse(self, ctx: commands.Context, *, time: str):
         """ Test date parsing. """
         remind_time = self._convert_time(time)
-        await ctx.send(f"parsed time: {remind_time}   system now: {datetime.now()}    central now: {datetime.now(central)}")
+        await ctx.send(f"parsed time: {remind_time}   utc now: {datetime.now(pytz.utc)}    central now: {datetime.now(central)}")
 
     @commands.command(hidden=True)
     async def remind(self, ctx: commands.Context, target: str, *, message: str):
@@ -76,11 +81,11 @@ class RemindMe(commands.Cog):
         # im dumb and stubborn for not wanting this as a slash command, argument parsing here is bad
         # also you get the ephemeral response with slash commands
 
-        time_phrase, remind_message = message.split(" to ", 1)
-
-        if not time_phrase or not remind_message:
+        to_split = message.split(" to ", 1)
+        if len(to_split) != 2:
             await ctx.send("I couldn't understand. This command expects \" to \" to exactly separate the time and message, like \"!remind me tomorrow to check the mail\" :smile:")
             return
+        time_phrase, remind_message = to_split[0], to_split[1] 
 
         remind_time = self._convert_time(time_phrase)
         if not remind_time:
@@ -94,6 +99,7 @@ class RemindMe(commands.Cog):
     # @commands.command()
     async def get_my_reminders(self, ctx: commands.Context):
         """ Get all reminders for the user who issued the command. """
+        # remember to display to user in their timezone
         await ctx.send("havent implemented this yet")
 
     # @commands.command()
