@@ -13,7 +13,7 @@ log: logging.Logger = logging.getLogger(__name__)
 
 REMINDER_LOOP_MINUTES = 1
 
-central = pytz.timezone('US/Central')
+CENTRAL_TIMEZONE = pytz.timezone('US/Central')
 
 class RemindMe(commands.Cog):
     """ Remind me to do something in the future. """
@@ -34,18 +34,25 @@ class RemindMe(commands.Cog):
 
         # discord doesnt have any way to exposing a user's timezone, so relative times are kinda awkward
         # here I just always assume user is in central timezone
-        timezone = central if not timezone else timezone
-        timezone_adjusted_next_time, parse_status = self.datetime_parser.parseDT(time, datetime.now(timezone))
+        user_timezone = CENTRAL_TIMEZONE if not timezone else timezone
+        user_timezone_naive_next_time, parse_status = self.datetime_parser.parseDT(time, sourceTime=datetime.now(user_timezone))
+        if not parse_status:
+            return None
 
-        # return as offset naive utc
-        return timezone_adjusted_next_time.astimezone(pytz.utc).replace(tzinfo=None) if parse_status else None
-        
+        log.info(f"user_timezone_naive_next_time: {user_timezone_naive_next_time}")
+        user_timezone_aware_next_time = user_timezone.localize(user_timezone_naive_next_time)
+        log.info(f"user_timezone_aware_next_time: {user_timezone_aware_next_time}")
+        utc_aware_next_time = user_timezone_aware_next_time.astimezone(pytz.utc)
+        log.info(f"utc_aware_next_time: {utc_aware_next_time}")
+        utc_naive_next_time = utc_aware_next_time.replace(tzinfo=None)
+        log.info(f"utc_naive_next_time: {utc_naive_next_time}")
+        return utc_naive_next_time
         
     @commands.command(aliases=['tdp'], hidden=True)
     async def testdateparse(self, ctx: commands.Context, *, time: str):
         """ Test date parsing. """
         remind_time = self._convert_time(time)
-        await ctx.send(f"parsed time: {remind_time}   utc now: {datetime.now(pytz.utc)}    central now: {datetime.now(central)}")
+        await ctx.send(f"parsed time: {remind_time}   utc now: {datetime.now(pytz.utc)}    central now: {datetime.now(CENTRAL_TIMEZONE)}")
 
     @commands.command(hidden=True)
     async def remind(self, ctx: commands.Context, target: str, *, message: str):
