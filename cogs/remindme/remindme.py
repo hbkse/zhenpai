@@ -37,11 +37,11 @@ class RemindMe(commands.Cog):
         timezone = central if not timezone else timezone
         timezone_adjusted_next_time, parse_status = self.datetime_parser.parseDT(time, datetime.now(timezone))
 
-        # return as utc
-        return timezone_adjusted_next_time.astimezone(pytz.utc) if parse_status else None
+        # return as offset naive utc
+        return timezone_adjusted_next_time.astimezone(pytz.utc).replace(tzinfo=None) if parse_status else None
         
         
-    @commands.command(hidden=True)
+    @commands.command(aliases=['tdp'], hidden=True)
     async def testdateparse(self, ctx: commands.Context, *, time: str):
         """ Test date parsing. """
         remind_time = self._convert_time(time)

@@ -36,9 +36,11 @@ class Admin(commands.Cog):
         servers = "\n".join([f"{guild.name} ({guild.id})" for guild in self.bot.guilds])
         await ctx.send(servers)
 
-    @commands.command(hidden=True)
+    @commands.command(aliases=['rlc'], hidden=True)
     @commands.is_owner()
     async def load_cog(self, ctx: commands.Context, ext: str):
+        """Reload cog really useful for development."""
+
         if ext in self.bot.extensions:
             await self.bot.reload_extension(ext)
         else:
