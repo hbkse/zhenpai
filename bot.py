@@ -15,6 +15,7 @@ extensions = [
     'cogs.tags',
     # 'cogs.spotify',
     'cogs.remindme',
+    'cogs.reposts',
     # 'cogs.gotosleep',
     'cogs.apex',
     'cogs.admin',
