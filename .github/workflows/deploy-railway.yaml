@@ -40,7 +40,7 @@ jobs:
       uses: actions/checkout@v3
 
     - name: Set up Railway CLI
-      run: bash <(curl -fsSL cli.new)
+      run: bash <(curl -fsSL https://railway.app/install.sh)
 
     - name: Deploy
       run: railway up --service zhenpai
