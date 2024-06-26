@@ -14,7 +14,8 @@ log: logging.Logger = logging.getLogger(__name__)
 # SEASON_19_RANKED_MAPS = ["**Storm Point** ⛱️🐺", "**Broken Moon** 💩🌙", "**Olympus** 🌌🔬"]
 # SEASON_20_RANKED_MAPS = ["**Olympus** 🌌🔬", "**Storm Point** ⛱️🐺", "**World's Edge** 🏙️🔥"]
 # SEASON_20_RANKED_MAPS = ["**Storm Point** ⛱️🐺", "**Olympus** 🌌🔬", "**World's Edge** 🏙️🔥"]
-SEASON_21_RANKED_MAPS = ["**Broken Moon** 💩🌙", "**World's Edge** 🏙️🔥", "**King's Canyon** 💩💩"]
+# SEASON_21_RANKED_MAPS = ["**Broken Moon** 💩🌙", "**World's Edge** 🏙️🔥", "**King's Canyon** 💩💩"]
+SEASON_21_RANKED_MAPS = ["**Olympus** 🌌🔬", "**Broken Moon** 💩🌙", "**World's Edge** 🏙️🔥"]
 # START_DATE = datetime.datetime(2023, 3, 19, 13 + 5, tzinfo=datetime.timezone.utc) # 3/19 1PM UTC+5, WORLD'S EDGE
 # SEASON_16_SPLIT_1_END_DATE = datetime.datetime(2023, 4, 4, 13 + 5, tzinfo=datetime.timezone.utc) # 4/4 1PM UTC+5
 # SEASON_16_SPLIT_2_END_DATE = datetime.datetime(2023, 5, 9, 13 + 5, tzinfo=datetime.timezone.utc) # 5/9 1PM UTC+5

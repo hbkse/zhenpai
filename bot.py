@@ -10,17 +10,18 @@ from typing import Optional
 
 log: logging.Logger = logging.getLogger(__name__)
 
+extensions_dir = "cogs.{}"
 extensions = [
-    'cogs.misc',
-    'cogs.tags',
-    # 'cogs.spotify',
-    'cogs.remindme',
-    'cogs.reposts',
-    # 'cogs.gotosleep',
-    'cogs.apex',
-    'cogs.admin',
-    # 'cogs.vxtwitter',
-    'cogs.saturday',
+    'misc',
+    'tags',
+    # 'spotify',
+    'remindme',
+    'reposts',
+    # 'gotosleep',
+    'apex',
+    'admin',
+    # 'vxtwitter',
+    'saturday',
 ]
 
 def setup_intents():
@@ -86,7 +87,7 @@ class Zhenpai(commands.Bot):
 
     async def setup_hook(self) -> None:
         for ext in extensions:
-            await self.load_extension(ext)
+            await self.load_extension(extensions_dir.format(ext))
             log.info('Loaded extension: %s', ext)
         
         # Sync app_commands for testing guild
