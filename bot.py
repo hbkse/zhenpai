@@ -19,6 +19,7 @@ extensions = [
     'reposts',
     # 'gotosleep',
     'apex',
+    'wow',
     'admin',
     # 'vxtwitter',
     'saturday',
