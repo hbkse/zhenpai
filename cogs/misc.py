@@ -3,8 +3,11 @@ from typing import Optional
 import discord
 import datetime
 import pytz
+import time
+import parsedatetime as pdt
 from discord.ext import commands
 from bot import Zhenpai
+
 import logging
 
 log: logging.Logger = logging.getLogger(__name__)
@@ -14,6 +17,7 @@ class Misc(commands.Cog):
 
     def __init__(self, bot: Zhenpai):
         self.bot = bot
+        self.pdtcal = pdt.Calendar()
 
     @commands.command()
     async def ping(self, ctx: commands.Context):
@@ -43,7 +47,7 @@ class Misc(commands.Cog):
         await ctx.send(f"Bye bye :wave:")
 
     @commands.command()
-    async def deletelast(self, ctx, n: int):
+    async def deletelast(self, ctx: commands.Context, n: int):
         if n < 1:
             await ctx.send("Please provide a valid number greater than 0.")
             return
@@ -59,7 +63,7 @@ class Misc(commands.Cog):
         await ctx.channel.delete_messages(messages)
 
     @commands.command()
-    async def roll(self, ctx, n: int = 100):
+    async def roll(self, ctx: commands.Context, n: int = 100):
         roll = random.randint(1, n)
         if roll == 1:
             await ctx.send(f'🎲 {ctx.author.display_name} rolled a {roll}! Get Fucked!')
@@ -67,7 +71,7 @@ class Misc(commands.Cog):
             await ctx.send(f'🎲 {ctx.author.display_name} rolled a {roll}!')
 
     @commands.command()
-    async def india(self, ctx):
+    async def india(self, ctx: commands.Context):
         """
         gives you the current time in india elelelelele
         """
@@ -77,7 +81,7 @@ class Misc(commands.Cog):
         await ctx.send(f'The current datetime in India is: {formatted_time}')
 
     @commands.command()
-    async def japan(self, ctx):
+    async def japan(self, ctx: commands.Context):
         """
         gives you the current time in japan elelelelele
         """
@@ -85,6 +89,45 @@ class Misc(commands.Cog):
         jp_time = datetime.datetime.now(jp_timezone)
         formatted_time = jp_time.strftime('%m-%d %H:%M:%S')
         await ctx.send(f'The current datetime in Japan is: {formatted_time}')
+
+    @commands.command()
+    async def ben(self, ctx: commands.Context, *, content: str):
+        """
+        determines if ben is working or not given a day in the future
+        """
+        def is_ben_working(content: str):
+            """
+            returns (bool, str) where str is the explanation string
+            """
+            start_date_str = "November 4, 2024" # arbitrary start date where he's working
+
+            # Parse dates
+            input_struct, parse_status = self.pdtcal.parse(content)
+            if parse_status == 0:
+                return False, f"Could not parse input date: {content}"
+            input_date = datetime.datetime.fromtimestamp(time.mktime(input_struct))
+            start_struct, _ = self.pdtcal.parse(start_date_str)
+            start_date = datetime.datetime.fromtimestamp(time.mktime(start_struct))
+            
+            # Calculate days since start date (can be negative for past dates)
+            days_diff = (input_date - start_date).days
+            cycle_day = days_diff % 14
+            
+            # First 7 days (0-6) are working days, next 7 (7-13) are off days
+            is_working = cycle_day < 7
+            
+            # Create explanation message
+            date_str = input_date.strftime("%A, %B %d, %Y")
+            status = "working" if is_working else "off"
+            
+            explanation = f"On {date_str}, they are {status}. "
+
+            if cycle_day == 13:
+                explanation += "But, this is their last day off (Sunday) before returning to work."
+            
+            return is_working, explanation
+        is_working, message = is_ben_working(content)
+        await ctx.send(message)
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
