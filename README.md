@@ -10,12 +10,12 @@ Requires at least python 3.8.
 
 Create your own `.env` file based on `.env.example`. You can create a bot and grab the token from the [Discord Developer Portal](https://discord.com/developers/applications)
 
-Create venv: `python -m venv myenv`
+Create venv: `python3 -m venv myenv`
 
 Activate venv: `source myenv/bin/activate`
 
 Install packages: `pip install --no-cache-dir -U -r requirements.txt`
 
-Run: `python start.py`.
+Run: `python3 start.py`.
 
 Deactivate venv: `deactivate`

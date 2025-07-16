@@ -134,23 +134,22 @@ class Misc(commands.Cog):
         if message.author.bot:
             return
 
-        # based? on what?
-        based = "based"
-        not_based = ["on", "off"]
-        words = message.content.lower().split(" ")
-        
-        should_send_message = False
-        if based in words:
-            should_send_message = True
-            i = words.index(based)
-            if i + 1 < len(words):
-                next_word = words[i + 1]
-                if next_word in not_based:
-                    should_send_message = False
+        # await self._call_and_response(message, "based", ["based on", "based off"], "on what?")
+        await self._call_and_response(message, "buy the dip", ["buy the dip with"], "with what?")
 
-        if should_send_message:
-            await message.channel.send("on what?")
+    async def _call_and_response(self, message: discord.Message, target: str, exclusions: list[str], response: str):
+        """Send `response` when `target` phrase exists and no exclusion matches."""
+        def _has_phrase(words: list[str], phrase: list[str]) -> bool:
+            n = len(phrase)
+            return any(words[i:i + n] == phrase for i in range(len(words) - n + 1))
 
+        words = message.content.lower().split()
+        if not _has_phrase(words, target.lower().split()):
+            return
+        if any(_has_phrase(words, ex.lower().split()) for ex in exclusions):
+            return
+
+        await message.channel.send(response)
 
 async def setup(bot: Zhenpai):
     await bot.add_cog(Misc(bot))

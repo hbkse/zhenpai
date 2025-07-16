@@ -1,6 +1,7 @@
 .env
 __pycache__/
 venv/
+myenv/
 data/*
 .idea/
 *.log
