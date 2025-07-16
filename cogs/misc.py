@@ -1,5 +1,5 @@
 import random
-from typing import Optional
+from typing import Optional, List
 import discord
 import datetime
 import pytz
@@ -137,9 +137,9 @@ class Misc(commands.Cog):
         # await self._call_and_response(message, "based", ["based on", "based off"], "on what?")
         await self._call_and_response(message, "buy the dip", ["buy the dip with"], "with what?")
 
-    async def _call_and_response(self, message: discord.Message, target: str, exclusions: list[str], response: str):
+    async def _call_and_response(self, message: discord.Message, target: str, exclusions: List[str], response: str):
         """Send `response` when `target` phrase exists and no exclusion matches."""
-        def _has_phrase(words: list[str], phrase: list[str]) -> bool:
+        def _has_phrase(words: List[str], phrase: List[str]) -> bool:
             n = len(phrase)
             return any(words[i:i + n] == phrase for i in range(len(words) - n + 1))
 
