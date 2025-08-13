@@ -23,3 +23,5 @@ PGPASSWORD = os.environ.get('PGPASSWORD')
 COMMIT_HASH = os.environ.get('COMMIT_HASH') or os.environ.get('RAILWAY_GIT_COMMIT_SHA') or "local"
 
 COMMAND_PREFIX = "!"
+
+APEX_API_KEY = os.environ.get('APEX_API_KEY')
