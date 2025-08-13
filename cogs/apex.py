@@ -6,32 +6,7 @@ from bot import Zhenpai
 
 log: logging.Logger = logging.getLogger(__name__)
 
-
-# SEASON_16_RANKED_MAPS = ["**World's Edge** 🏙️🔥", "**Storm Point** ⛱️🐺", "**Broken Moon** 💩🌙"]
-# SEASON_16_RANKED_MAPS = ["**Olympus** 🌌🔬", "**Storm Point** ⛱️🐺", "**Broken Moon** 💩🌙"]
-# SEASON_17_RANKED_MAPS = ["**Olympus** 🌌🔬", "**King's Canyon** 💩💩", "**World's Edge** 🏙️🔥"]
-# SEASON_18_RANKED_MAPS = ["**Broken Moon** 💩🌙", "**King's Canyon** 💩💩", "**Olympus** 🌌🔬"]
-# SEASON_19_RANKED_MAPS = ["**Storm Point** ⛱️🐺", "**Broken Moon** 💩🌙", "**Olympus** 🌌🔬"]
-# SEASON_20_RANKED_MAPS = ["**Olympus** 🌌🔬", "**Storm Point** ⛱️🐺", "**World's Edge** 🏙️🔥"]
-# SEASON_20_RANKED_MAPS = ["**Storm Point** ⛱️🐺", "**Olympus** 🌌🔬", "**World's Edge** 🏙️🔥"]
-# SEASON_21_RANKED_MAPS = ["**Broken Moon** 💩🌙", "**World's Edge** 🏙️🔥", "**King's Canyon** 💩💩"]
-# SEASON_21_RANKED_MAPS = ["**Olympus** 🌌🔬", "**Broken Moon** 💩🌙", "**World's Edge** 🏙️🔥"]
-SEASON_22_RANKED_MAPS = ["**E-District** 🌃🌃", "**Broken Moon** 💩🌙", "**Storm Point** ⛱️🐺"]
-# START_DATE = datetime.datetime(2023, 3, 19, 13 + 5, tzinfo=datetime.timezone.utc) # 3/19 1PM UTC+5, WORLD'S EDGE
-# SEASON_16_SPLIT_1_END_DATE = datetime.datetime(2023, 4, 4, 13 + 5, tzinfo=datetime.timezone.utc) # 4/4 1PM UTC+5
-# SEASON_16_SPLIT_2_END_DATE = datetime.datetime(2023, 5, 9, 13 + 5, tzinfo=datetime.timezone.utc) # 5/9 1PM UTC+5
-# SEASON_17_START_DATE = datetime.datetime(2023, 5, 9, 12 + 5, tzinfo=datetime.timezone.utc) # 5/9 1PM UTC+5
-# SEASON_17_END_DATE = datetime.datetime(2023, 6, 20, 12 + 5, tzinfo=datetime.timezone.utc) # 6/20 1PM UTC+5
-# SEASON_18_START_DATE = datetime.datetime(2023, 8, 8, 12 + 5, tzinfo=datetime.timezone.utc) # 8/8 1PM UTC+5
-# SEASON_18_END_DATE = datetime.datetime(2023, 10, 30, 12 + 5, tzinfo=datetime.timezone.utc) # 10/30 1PM UTC+5
-# SEASON_19_START_DATE = datetime.datetime(2023, 10, 31, 12 + 5, tzinfo=datetime.timezone.utc) 
-# SEASON_19_END_DATE = datetime.datetime(2024, 2, 13, 12 + 5, tzinfo=datetime.timezone.utc)
-# SEASON_20_START_DATE = datetime.datetime(2024, 2, 13, 12 + 5, tzinfo=datetime.timezone.utc) 
-# SEASON_20_END_DATE = datetime.datetime(2024, 5, 6, 12 + 5, tzinfo=datetime.timezone.utc) # idk when it ends
-# SEASON_21_START_DATE = datetime.datetime(2024, 5, 7, 12 + 5, tzinfo=datetime.timezone.utc) 
-# SEASON_21_END_DATE = datetime.datetime(2024, 8, 6, 12 + 5, tzinfo=datetime.timezone.utc) # idk when it ends
-SEASON_22_START_DATE = datetime.datetime(2024, 8, 12, 12 + 5, tzinfo=datetime.timezone.utc) 
-SEASON_22_END_DATE = datetime.datetime(2024, 11, 5, 12 + 5, tzinfo=datetime.timezone.utc) # idk when it ends
+API_URL = "https://api.mozambiquehe.re/maprotation?version=2"
 
 class Apex(commands.Cog):
     """Commands for Apex Legends"""
@@ -41,31 +16,73 @@ class Apex(commands.Cog):
 
     @commands.command()
     async def map(self, ctx: commands.Context):
-        if datetime.datetime.now(datetime.timezone.utc) > SEASON_22_END_DATE:
-            await ctx.send("season's over, need to update")
+        api_key = getattr(config, 'APEX_API_KEY', None)
+        if not api_key:
+            await ctx.send("APEX_API_KEY is not configured.")
             return
 
-        time_passed =  datetime.datetime.now(datetime.timezone.utc) - SEASON_22_START_DATE
-        index = time_passed.days % 3
-        current_map = SEASON_22_RANKED_MAPS[index]
-        next_map = SEASON_22_RANKED_MAPS[(index + 1) % 3]
-        TWENTY_FOUR_HOURS_IN_SECONDS = 86400
-        total_seconds_remaining = TWENTY_FOUR_HOURS_IN_SECONDS - time_passed.seconds
-        hours_remaining = total_seconds_remaining // 3600
-        minutes_remaining = (total_seconds_remaining % 3600) // 60
-        await ctx.send(f"Current ranked map is {current_map}  for **{hours_remaining} hours {minutes_remaining} minutes**. Next map is {next_map}")
+        try:
+            async with self.bot.http_client.get(API_URL, headers={"Authorization": api_key}) as resp:
+                if resp.status != 200:
+                    await ctx.send(f"Failed to fetch map rotation (status {resp.status}).")
+                    return
+                data = await resp.json()
+        except Exception as e:
+            log.exception("Error fetching Apex map rotation: %s", e)
+            await ctx.send("Error fetching map rotation.")
+            return
+
+        ranked = (data or {}).get('ranked', {})
+        current = ranked.get('current', {})
+        next_map_info = ranked.get('next', {})
+
+        current_map_name = current.get('map') or 'Unknown'
+        next_map_name = next_map_info.get('map') or 'Unknown'
+
+        remaining_secs = current.get('remainingSecs')
+        if remaining_secs is None:
+            end_ts = current.get('end')
+            if isinstance(end_ts, int):
+                now_seconds = int(datetime.datetime.now(datetime.timezone.utc).timestamp())
+                remaining_secs = max(0, end_ts - now_seconds)
+            else:
+                remaining_secs = 0
+
+        hours_remaining = remaining_secs // 3600
+        minutes_remaining = (remaining_secs % 3600) // 60
+
+        await ctx.send(
+            f"Current ranked map is **{current_map_name}** for **{hours_remaining} hours {minutes_remaining} minutes**. Next map is **{next_map_name}**."
+        )
 
     @commands.command()
     async def split(self, ctx: commands.Context):
-        now = datetime.datetime.now(datetime.timezone.utc)
+        api_key = getattr(config, 'APEX_API_KEY', None)
+        if not api_key:
+            await ctx.send("APEX_API_KEY is not configured.")
+            return
 
-        if now < SEASON_22_END_DATE:
-            time_remaining = SEASON_22_END_DATE - now
-        else:
-            await ctx.send("season's over, need to update")
+        try:
+            async with self.bot.http_client.get(API_URL, headers={"Authorization": api_key}) as resp:
+                if resp.status != 200:
+                    await ctx.send(f"Failed to fetch ranked rotation (status {resp.status}).")
+                    return
+                data = await resp.json()
+        except Exception as e:
+            log.exception("Error fetching Apex ranked rotation: %s", e)
+            await ctx.send("Error fetching ranked rotation.")
+            return
 
-        days = time_remaining.days or 0
-        hours = time_remaining.seconds // 3600
+        current = (data or {}).get('ranked', {}).get('current', {})
+        end_ts = current.get('end')
+        if not isinstance(end_ts, int):
+            await ctx.send("Could not determine ranked split end.")
+            return
+
+        now = int(datetime.datetime.now(datetime.timezone.utc).timestamp())
+        remaining_secs = max(0, end_ts - now)
+        days = remaining_secs // 86400
+        hours = (remaining_secs % 86400) // 3600
         await ctx.send(f"Current ranked split ends in: **{days} days {hours} hours**")
 
     # https://tracker.gg/developers/docs/getting-started
