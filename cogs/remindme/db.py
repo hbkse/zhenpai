@@ -18,7 +18,7 @@ class Reminder:
     remind_time: datetime
     content: str
     created_on: datetime
-    reminder_type: ReminderType  # Use enum instead of string
+    reminder_type: ReminderType
     sent_on: datetime
     deleted_on: datetime
 
@@ -32,7 +32,7 @@ class Reminder:
             remind_time=row['remind_time'],
             content=row['content'],
             created_on=row['created_on'],
-            reminder_type=ReminderType(row['reminder_type']),  # Convert string to enum
+            reminder_type=ReminderType(row['reminder_type']),
             sent_on=row['sent_on'],
             deleted_on=row['deleted_on']
         )
