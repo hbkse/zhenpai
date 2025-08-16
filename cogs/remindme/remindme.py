@@ -8,6 +8,7 @@ import parsedatetime as pdt
 
 from bot import Zhenpai
 from .db import ReminderDb
+from .types import ReminderType
 
 log: logging.Logger = logging.getLogger(__name__)
 
@@ -67,8 +68,10 @@ class RemindMe(commands.Cog):
         """Remind me to do something in the future. It will DM the user who issued the command. 
         
         Usage: !remindme <when> to <what>
+        Special: Add "in this chat" or "in this channel" to post the reminder in the channel and mention you.
 
         Example: !remindme in 1 hour to check the oven
+        Example: !remindme in 1 hour to check the oven in this chat
         """
     
         await self._remind_command_impl(ctx, message, is_private=True)
@@ -88,6 +91,19 @@ class RemindMe(commands.Cog):
         # im dumb and stubborn for not wanting this as a slash command, argument parsing here is bad
         # also you get the ephemeral response with slash commands
 
+        # Check for "in this chat" or "in this channel" phrases
+        in_chat_phrases = ["in this chat", "in this channel"]
+        reminder_type = ReminderType.PRIVATE if is_private else ReminderType.PUBLIC
+        
+        # Remove the chat/channel phrases from the message for parsing
+        original_message = message
+        for phrase in in_chat_phrases:
+            if phrase in message.lower():
+                message = message.replace(phrase, "").strip()
+                if is_private:  # Only allow "in this chat" for remindme commands
+                    reminder_type = ReminderType.MENTION
+                break
+
         to_split = message.split(" to ", 1)
         if len(to_split) != 2:
             await ctx.send("I couldn't understand. This command expects \" to \" to exactly separate the time and message, like \"!remind me tomorrow to check the mail\" :smile:")
@@ -100,7 +116,7 @@ class RemindMe(commands.Cog):
             return
 
         # check result? or do exception handling?
-        res = await self.db.add_reminder(ctx, remind_time, remind_message, is_private)
+        res = await self.db.add_reminder(ctx, remind_time, remind_message, reminder_type)
         await ctx.message.add_reaction("✅")
     
     # @commands.command()
@@ -121,14 +137,35 @@ class RemindMe(commands.Cog):
         active_reminders = await self.db.get_active_reminders()
         for reminder in active_reminders:
             log.info(f"Trying to send reminder id: {reminder.id}")
-            if reminder.is_private:
-                user = self.bot.get_user(reminder.user_id) # handle null user?
-                await user.send(f"You told me to remind you: {reminder.content}")
-            else:
-                channel = self.bot.get_channel(reminder.channel_id) # handle null channel?
-                # assert guild channel? 
-                await channel.send(f"You told me to remind everyone: {reminder.content}")
-            await self.db.mark_reminder_sent(reminder.id)
+            
+            try:
+                if reminder.reminder_type == ReminderType.PRIVATE:
+                    user = self.bot.get_user(reminder.user_id)
+                    if user:
+                        await user.send(f"You told me to remind you: {reminder.content}")
+                    else:
+                        log.warning(f"Could not find user {reminder.user_id} for reminder {reminder.id}")
+                elif reminder.reminder_type == ReminderType.PUBLIC:
+                    channel = self.bot.get_channel(reminder.channel_id)
+                    if channel:
+                        await channel.send(f"You told me to remind everyone: {reminder.content}")
+                    else:
+                        log.warning(f"Could not find channel {reminder.channel_id} for reminder {reminder.id}")
+                elif reminder.reminder_type == ReminderType.MENTION:
+                    channel = self.bot.get_channel(reminder.channel_id)
+                    user = self.bot.get_user(reminder.user_id)
+                    if channel and user:
+                        await channel.send(f"{user.mention} You told me to remind you: {reminder.content}")
+                    else:
+                        log.warning(f"Could not find channel {reminder.channel_id} or user {reminder.user_id} for reminder {reminder.id}")
+                else:
+                    log.error(f"Unknown reminder type: {reminder.reminder_type} for reminder {reminder.id}")
+                    continue
+                    
+                await self.db.mark_reminder_sent(reminder.id)
+            except Exception as e:
+                log.error(f"Error sending reminder {reminder.id}: {e}")
+                continue
 
     @check_reminders.before_loop
     async def before_check_reminders(self):

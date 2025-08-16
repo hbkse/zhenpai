@@ -71,24 +71,32 @@ class Misc(commands.Cog):
             await ctx.send(f'🎲 {ctx.author.display_name} rolled a {roll}!')
 
     @commands.command()
+    async def vietnam(self, ctx: commands.Context):
+        """
+        Get the current time in Vietnam
+        """
+        await self._get_timezone_time(ctx, 'Asia/Ho_Chi_Minh', 'Vietnam')
+
+    @commands.command()
     async def india(self, ctx: commands.Context):
         """
-        gives you the current time in india elelelelele
+        Get the current time in India
         """
-        india_timezone = pytz.timezone('Asia/Kolkata')
-        india_time = datetime.datetime.now(india_timezone)
-        formatted_time = india_time.strftime('%m-%d %H:%M:%S')
-        await ctx.send(f'The current datetime in India is: {formatted_time}')
+        await self._get_timezone_time(ctx, 'Asia/Kolkata', 'India')
 
     @commands.command()
     async def japan(self, ctx: commands.Context):
         """
-        gives you the current time in japan elelelelele
+        Get the current time in Japan
         """
-        jp_timezone = pytz.timezone('Asia/Tokyo')
-        jp_time = datetime.datetime.now(jp_timezone)
-        formatted_time = jp_time.strftime('%m-%d %H:%M:%S')
-        await ctx.send(f'The current datetime in Japan is: {formatted_time}')
+        await self._get_timezone_time(ctx, 'Asia/Tokyo', 'Japan')
+
+    async def _get_timezone_time(self, ctx: commands.Context, timezone_name: str, country_name: str):
+        """Helper method to get and display current time in a specific timezone"""
+        timezone = pytz.timezone(timezone_name)
+        current_time = datetime.datetime.now(timezone)
+        formatted_time = current_time.strftime('%m-%d %H:%M:%S')
+        await ctx.send(f'The current datetime in {country_name} is: {formatted_time}')
 
     @commands.command()
     async def ben(self, ctx: commands.Context, *, content: str):

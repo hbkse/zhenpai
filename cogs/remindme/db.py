@@ -4,6 +4,7 @@ from dataclasses import dataclass
 import logging
 from datetime import datetime
 from discord.ext import commands
+from .types import ReminderType
 
 log: logging.Logger = logging.getLogger(__name__)
 
@@ -17,7 +18,7 @@ class Reminder:
     remind_time: datetime
     content: str
     created_on: datetime
-    is_private: bool
+    reminder_type: ReminderType  # Use enum instead of string
     sent_on: datetime
     deleted_on: datetime
 
@@ -31,7 +32,7 @@ class Reminder:
             remind_time=row['remind_time'],
             content=row['content'],
             created_on=row['created_on'],
-            is_private=row['is_private'],
+            reminder_type=ReminderType(row['reminder_type']),  # Convert string to enum
             sent_on=row['sent_on'],
             deleted_on=row['deleted_on']
         )
@@ -68,23 +69,23 @@ class ReminderDb():
         result = await self.pool.execute(query, reminder_id)
         return result == "UPDATE 1"
     
-    async def add_reminder(self, ctx: commands.Context, remind_time: datetime, content: str, is_private: bool) -> bool:
+    async def add_reminder(self, ctx: commands.Context, remind_time: datetime, content: str, reminder_type: ReminderType) -> bool:
         """Add a reminder to the database.
         
         Args:
             ctx: The discord context of the command.
             remind_time: The point in time to remind the user.
             content: The content of the reminder.
-            is_private: Whether the reminder should be sent as a DM.
+            reminder_type: The type of reminder ("private", "public", or "mention").
             
         Returns:
             True if the reminder was successfully marked as sent, False otherwise.
         """
 
         query = """
-            INSERT INTO remindme (user_id, guild_id, channel_id, remind_time, content, is_private) VALUES ($1, $2, $3, $4, $5, $6)
+            INSERT INTO remindme (user_id, guild_id, channel_id, remind_time, content, reminder_type) VALUES ($1, $2, $3, $4, $5, $6)
         """
-        result = await self.pool.execute(query, ctx.author.id, ctx.guild.id, ctx.channel.id, remind_time, content, is_private)
+        result = await self.pool.execute(query, ctx.author.id, ctx.guild.id, ctx.channel.id, remind_time, content, reminder_type.value)
         return result == "INSERT 1"
     
     async def delete_reminder(self, reminder_id: int) -> bool:
