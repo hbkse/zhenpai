@@ -20,8 +20,16 @@ PGPORT = os.environ.get('PGPORT')
 PGUSER = os.environ.get('PGUSER')
 PGPASSWORD = os.environ.get('PGPASSWORD')
 
+# MySQL config for CS2 match data
+MYSQL_HOST = os.environ.get('MYSQL_HOST')
+MYSQL_PORT = int(os.environ.get('MYSQL_PORT', 3306))
+MYSQL_USER = os.environ.get('MYSQL_USER')
+MYSQL_PASSWORD = os.environ.get('MYSQL_PASSWORD')
+MYSQL_DATABASE = os.environ.get('MYSQL_DATABASE')
+
 COMMIT_HASH = os.environ.get('COMMIT_HASH') or os.environ.get('RAILWAY_GIT_COMMIT_SHA') or "local"
 
 COMMAND_PREFIX = "!"
 
+# apexlegendsstatus dot com 
 APEX_API_KEY = os.environ.get('APEX_API_KEY')

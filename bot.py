@@ -23,6 +23,7 @@ extensions = [
     'admin',
     # 'vxtwitter',
     'saturday',
+    'cs2',
 ]
 
 def setup_intents():
