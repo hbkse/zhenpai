@@ -7,8 +7,8 @@ from logging.handlers import RotatingFileHandler
 from aiohttp import ClientSession
 import asyncpg
 import config
-from app import app as flask_app
 import threading
+from app import app as flask_app
 
 def db_connection_options():
     return {

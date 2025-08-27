@@ -1,6 +1,8 @@
 import discord
 from discord.ext import commands
 import logging
+import json
+from typing import List, Dict, Any
 from .db import UsersDb
 from bot import Zhenpai
 
@@ -87,5 +89,107 @@ class Users(commands.Cog):
             log.error(f"Error listing users: {e}")
             await ctx.send(f"❌ Error listing users: {str(e)}")
 
-async def setup(bot: Zhenpai):
-    await bot.add_cog(Users(bot))
+    @commands.command()
+    async def loadusers(self, ctx: commands.Context):
+        """Load users from a .txt or .json file attachment
+        
+        Usage: Reply to a message with a .txt or .json file attachment containing JSON user data with !loadusers
+        The JSON should be an array of user objects with 'id', 'steamId', and 'handle' fields
+        """
+        try:
+            # Check if this is a reply to another message
+            if not ctx.message.reference:
+                await ctx.send("❌ Please reply to a message with a .txt or .json file attachment containing JSON user data with this command.")
+                return
+            
+            # Get the referenced message
+            referenced_message = await ctx.channel.fetch_message(ctx.message.reference.message_id)
+            
+            # Check for .txt or .json file attachment
+            file_attachment = None
+            for attachment in referenced_message.attachments:
+                if attachment.filename.lower().endswith(('.txt', '.json')):
+                    file_attachment = attachment
+                    break
+            
+            if not file_attachment:
+                await ctx.send("❌ The referenced message must have a .txt or .json file attachment.")
+                return
+            
+            # Download and read the file content
+            try:
+                file_content = await file_attachment.read()
+                file_text = file_content.decode('utf-8')
+            except Exception as e:
+                await ctx.send(f"❌ Error reading file: {str(e)}")
+                return
+            
+            # Parse the JSON
+            try:
+                users_data = json.loads(file_text)
+            except json.JSONDecodeError as e:
+                await ctx.send(f"❌ Invalid JSON format in file: {str(e)}")
+                return
+            
+            # Validate that it's a list
+            if not isinstance(users_data, list):
+                await ctx.send("❌ JSON should be an array of user objects.")
+                return
+            
+            # Process each user
+            processed_count = 0
+            updated_count = 0
+            errors = []
+            
+            for user_data in users_data:
+                try:
+                    # Extract required fields
+                    discord_id = int(user_data.get('id'))
+                    handle = user_data.get('handle')
+                    steam_id = user_data.get('steamId')
+                    
+                    if not discord_id or not handle:
+                        errors.append(f"Missing required fields for user: {user_data}")
+                        continue
+                    
+                    # Convert steam_id to int if present
+                    steamid64 = int(steam_id) if steam_id else None
+                    
+                    # Check if user already exists
+                    existing_user = await self.db.get_user_by_discord_id(discord_id)
+                    
+                    if existing_user:
+                        # Update existing user
+                        await self.db.create_user(discord_id, handle, steamid64)
+                        updated_count += 1
+                    else:
+                        # Create new user
+                        await self.db.create_user(discord_id, handle, steamid64)
+                        processed_count += 1
+                        
+                except (ValueError, KeyError) as e:
+                    errors.append(f"Invalid data for user: {user_data} - {str(e)}")
+                except Exception as e:
+                    errors.append(f"Error processing user {user_data}: {str(e)}")
+            
+            # Send results
+            embed = discord.Embed(title="User Import Results", color=discord.Color.green())
+            embed.add_field(name="New Users Added", value=processed_count, inline=True)
+            embed.add_field(name="Users Updated", value=updated_count, inline=True)
+            embed.add_field(name="Total Processed", value=processed_count + updated_count, inline=True)
+            
+            if errors:
+                embed.color = discord.Color.orange()
+                error_text = "\n".join(errors[:5])  # Show first 5 errors
+                if len(errors) > 5:
+                    error_text += f"\n... and {len(errors) - 5} more errors"
+                embed.add_field(name="Errors", value=f"```{error_text}```", inline=False)
+            
+            await ctx.send(embed=embed)
+            
+            # Log the operation
+            log.info(f"User import completed by {ctx.author}: {processed_count} new, {updated_count} updated, {len(errors)} errors")
+            
+        except Exception as e:
+            log.error(f"Error in loadusers command: {e}")
+            await ctx.send(f"❌ Error loading users: {str(e)}")

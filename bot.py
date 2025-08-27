@@ -24,6 +24,8 @@ extensions = [
     # 'vxtwitter',
     'saturday',
     'cs2',
+    'users',
+    'points'
 ]
 
 def setup_intents():

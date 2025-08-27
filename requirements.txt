@@ -7,5 +7,6 @@ aiomysql==0.2.0
 pytz==2024.1
 parsedatetime==2.6
 flask==3.0.0
+psycopg2-binary==2.9.9
 
 # discord-ext-menus @ git+https://github.com/Rapptz/discord-ext-menus@8686b5d1bbc1d3c862292eb436ab630d6e9c9b53
