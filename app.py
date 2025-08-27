@@ -2,15 +2,14 @@ from flask import Flask, jsonify
 import logging
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+log: logging.Logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
 @app.route('/')
 def hello_world():
     """Basic hello world endpoint that returns empty JSON."""
-    logger.info("Hello world endpoint accessed")
+    log.info("Hello world endpoint accessed")
     return jsonify({})
 
 @app.route('/health')

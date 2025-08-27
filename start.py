@@ -74,8 +74,8 @@ def start_flask():
 
 def main():
     with setup_logging():
-        asyncio.run(run_bot())
         start_flask()
+        asyncio.run(run_bot())
 
 if __name__ == '__main__':
     main()

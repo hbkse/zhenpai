@@ -107,7 +107,7 @@ class CS2PostgresDb:
         """Insert player data into the cs2_player_stats table."""
         query = f"""
             INSERT INTO {self.CS2_PLAYER_STATS} (
-                matchid, mapnumber, steamid64, team, name, kills, deaths, damage, assists,
+                matchid, steamid64, team_name, name, kills, deaths, damage, assists,
                 enemy5ks, enemy4ks, enemy3ks, enemy2ks, utility_count, utility_damage,
                 utility_successes, utility_enemies, flash_count, flash_successes,
                 health_points_removed_total, health_points_dealt_total, shots_fired_total,
@@ -116,14 +116,13 @@ class CS2PostgresDb:
                 live_time, head_shot_kills, cash_earned, enemies_flashed
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
                      $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28,
-                     $29, $30, $31, $32, $33, $34, $35, $36)
+                     $29, $30, $31, $32, $33, $34, $35)
         """
         await self.pool.execute(
             query,
             player_data['matchid'],
-            player_data['mapnumber'],
             player_data['steamid64'],
-            player_data['team'],
+            player_data['team'],  # This will be mapped to team_name column
             player_data['name'],
             player_data['kills'],
             player_data['deaths'],
