@@ -7,6 +7,8 @@ from logging.handlers import RotatingFileHandler
 from aiohttp import ClientSession
 import asyncpg
 import config
+from app import app as flask_app
+import threading
 
 def db_connection_options():
     return {
@@ -61,9 +63,19 @@ async def run_bot():
             async with Zhenpai(http_client=http_client, db_pool=pool) as bot:
                 await bot._run()
 
+def start_flask():
+    def run_flask():
+        print("Starting Flask service on port 5000")
+        flask_app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False)
+
+    print("Starting flask server")
+    flask_thread = threading.Thread(target=run_flask, daemon=True)
+    flask_thread.start()
+
 def main():
     with setup_logging():
         asyncio.run(run_bot())
+        start_flask()
 
 if __name__ == '__main__':
     main()

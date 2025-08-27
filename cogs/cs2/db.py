@@ -77,14 +77,14 @@ class CS2PostgresDb:
     
     async def get_last_processed_match_id(self) -> Optional[int]:
         """Get the highest matchid from our PostgreSQL table."""
-        query = "SELECT MAX(matchid) as last_match FROM cs2_matches"
+        query = f"SELECT MAX(matchid) as last_match FROM {self.CS2_MATCHES}"
         result = await self.pool.fetchrow(query)
         return result['last_match'] if result and result['last_match'] else None
 
     async def insert_match(self, match_data: Dict[str, Any]) -> None:
         """Insert a match into the cs2_matches table."""
-        query = """
-            INSERT INTO cs2_matches (
+        query = f"""
+            INSERT INTO {self.CS2_MATCHES} (
                 matchid, start_time, end_time, winner, mapname,
                 team1_score, team2_score, team1_name, team2_name
             ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -104,9 +104,9 @@ class CS2PostgresDb:
         )
     
     async def insert_player_data(self, player_data: Dict[str, Any]) -> None:
-        """Insert player data into the cs2_player_data table."""
-        query = """
-            INSERT INTO cs2_player_data (
+        """Insert player data into the cs2_player_stats table."""
+        query = f"""
+            INSERT INTO {self.CS2_PLAYER_STATS} (
                 matchid, mapnumber, steamid64, team, name, kills, deaths, damage, assists,
                 enemy5ks, enemy4ks, enemy3ks, enemy2ks, utility_count, utility_damage,
                 utility_successes, utility_enemies, flash_count, flash_successes,
@@ -171,7 +171,7 @@ class CS2PostgresDb:
     async def get_match_players(self, match_id: int) -> List[Dict[str, Any]]:
         """Get all player data for a specific match."""
         query = f"""
-            SELECT * FROM {self.CS2_PLAYER_DATA} 
+            SELECT * FROM {self.CS2_PLAYER_STATS} 
             WHERE matchid = $1 
             ORDER BY kills DESC
         """

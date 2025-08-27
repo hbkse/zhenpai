@@ -13,4 +13,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
+# Expose port for Flask service
+EXPOSE 5000
+
+# Use a startup script to run both services
 CMD [ "python", "./start.py"]
