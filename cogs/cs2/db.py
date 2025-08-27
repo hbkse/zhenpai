@@ -70,7 +70,7 @@ class CS2PostgresDb:
     """DB layer for zhenpai CS2 data"""
 
     CS2_MATCHES = "cs2_matches"
-    CS2_PLAYER_DATA = "cs2_player_data"
+    CS2_PLAYER_STATS = "cs2_player_stats"
 
     def __init__(self, pool: Pool):
         self.pool = pool
