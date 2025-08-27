@@ -1,11 +1,18 @@
 import aiomysql
 import logging
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 import config
+from asyncpg import Pool
 
 log: logging.Logger = logging.getLogger(__name__)
 
-class CS2MySQLDatabase:
+class CS2MySQLDb:
+    """DB Connection for MySQL Matchzy stats"""
+
+    MATCHZY_STATS_MAPS = "matchzy_stats_maps"
+    MATCHZY_STATS_MATCHES = "matchzy_stats_matches"
+    MATCHZY_STATS_PLAYERS = "matchzy_stats_players"
+
     def __init__(self):
         self.pool: Optional[aiomysql.Pool] = None
     
@@ -21,10 +28,7 @@ class CS2MySQLDatabase:
                 autocommit=False,  # Read-only, no need for autocommit
                 minsize=1,
                 maxsize=5,  # Reduced pool size for read-only operations
-                charset='utf8mb4',
-                # read_timeout=30,
-                # write_timeout=0,  # No writes needed
-                # connect_timeout=10
+                charset='utf8mb4'
             )
             log.info("Connected to MySQL database for CS2")
         except Exception as e:
@@ -37,77 +41,139 @@ class CS2MySQLDatabase:
             self.pool.close()
             await self.pool.wait_closed()
             log.info("Closed MySQL connection pool")
-    
-    async def get_all_tables(self) -> List[str]:
-        """Get all table names from the database."""
-        async with self.pool.acquire() as conn:
-            async with conn.cursor() as cursor:
-                await cursor.execute("SHOW TABLES")
-                tables = await cursor.fetchall()
-                return [table[0] for table in tables]
-    
-    async def get_table_schema(self, table_name: str) -> List[Dict[str, Any]]:
-        """Get the schema of a specific table."""
-        async with self.pool.acquire() as conn:
-            async with conn.cursor() as cursor:
-                await cursor.execute(f"DESCRIBE {table_name}")
-                columns = await cursor.fetchall()
-                return [
-                    {
-                        'field': col[0],
-                        'type': col[1],
-                        'null': col[2],
-                        'key': col[3],
-                        'default': col[4],
-                        'extra': col[5]
-                    }
-                    for col in columns
-                ]
-    
-    async def get_table_data(self, table_name: str, limit: int = 100) -> List[Dict[str, Any]]:
-        """Get data from a specific table with optional limit."""
-        async with self.pool.acquire() as conn:
-            async with conn.cursor(aiomysql.DictCursor) as cursor:
-                await cursor.execute(f"SELECT * FROM {table_name} LIMIT {limit}")
-                rows = await cursor.fetchall()
-                return [dict(row) for row in rows]
-    
-    async def get_table_count(self, table_name: str) -> int:
-        """Get the total number of rows in a table."""
-        async with self.pool.acquire() as conn:
-            async with conn.cursor() as cursor:
-                await cursor.execute(f"SELECT COUNT(*) FROM {table_name}")
-                result = await cursor.fetchone()
-                return result[0] if result else 0
-    
-    async def execute_query(self, query: str, params: tuple = None) -> List[Dict[str, Any]]:
-        """Execute a custom query with parameters."""
-        async with self.pool.acquire() as conn:
-            async with conn.cursor(aiomysql.DictCursor) as cursor:
-                if params:
-                    await cursor.execute(query, params)
-                else:
-                    await cursor.execute(query)
-                rows = await cursor.fetchall()
-                return [dict(row) for row in rows]
 
-    async def get_table_data_since(self, table_name: str, timestamp_column: str, since_timestamp: str, limit: int = 1000) -> List[Dict[str, Any]]:
-        """Get data from a table since a specific timestamp - useful for polling/incremental updates."""
-        query = f"SELECT * FROM {table_name} WHERE {timestamp_column} >= %s ORDER BY {timestamp_column} DESC LIMIT {limit}"
-        return await self.execute_query(query, (since_timestamp,))
-
-    async def get_latest_timestamp(self, table_name: str, timestamp_column: str) -> Optional[str]:
-        """Get the most recent timestamp from a table - useful for tracking last poll time."""
-        query = f"SELECT MAX({timestamp_column}) as latest FROM {table_name}"
-        result = await self.execute_query(query)
-        return result[0]['latest'] if result and result[0]['latest'] else None
-
-    async def get_table_chunk(self, table_name: str, offset: int = 0, limit: int = 1000) -> List[Dict[str, Any]]:
-        """Get a chunk of data from a table - useful for batch processing during replication."""
-        query = f"SELECT * FROM {table_name} LIMIT {limit} OFFSET {offset}"
+    async def get_matches_greater_than_matchid(self, matchid: int) -> List[Dict[str, Any]]:
+        """Get all matches greater than a specific matchid."""
+        query = f"SELECT * FROM {self.MATCHZY_STATS_MATCHES} WHERE matchid > {matchid}"
         return await self.execute_query(query)
 
-    async def get_table_columns(self, table_name: str) -> List[str]:
-        """Get just the column names for a table - useful for schema replication."""
-        schema = await self.get_table_schema(table_name)
-        return [col['field'] for col in schema]
+    async def get_player_stats_for_match(self, matchid: int) -> List[Dict[str, Any]]:
+        """Get all player stats for a specific matchid."""
+        query = f"SELECT * FROM {self.MATCHZY_STATS_PLAYERS} WHERE matchid = {matchid}"
+        return await self.execute_query(query)
+
+    async def get_map_stats_for_match(self, matchid: int) -> Dict[str, Any]:
+        """Get all maps for a specific matchid."""
+        query = f"SELECT * FROM {self.MATCHZY_STATS_MAPS} WHERE matchid = {matchid}"
+        res = await self.execute_query(query)
+        assert(len(res) == 1)
+        return res[0]
+
+    async def execute_query(self, query: str, params: Tuple[Any, ...] = ()) -> List[Dict[str, Any]]:
+        """Execute a query and return the results."""
+        async with self.pool.acquire() as conn:
+            async with conn.cursor(aiomysql.DictCursor) as cursor:
+                await cursor.execute(query, params)
+                return await cursor.fetchall()
+
+class CS2PostgresDb:
+    """DB layer for zhenpai CS2 data"""
+
+    CS2_MATCHES = "cs2_matches"
+    CS2_PLAYER_DATA = "cs2_player_data"
+
+    def __init__(self, pool: Pool):
+        self.pool = pool
+    
+    async def get_last_processed_match_id(self) -> Optional[int]:
+        """Get the highest matchid from our PostgreSQL table."""
+        query = "SELECT MAX(matchid) as last_match FROM cs2_matches"
+        result = await self.pool.fetchrow(query)
+        return result['last_match'] if result and result['last_match'] else None
+
+    async def insert_match(self, match_data: Dict[str, Any]) -> None:
+        """Insert a match into the cs2_matches table."""
+        query = """
+            INSERT INTO cs2_matches (
+                matchid, start_time, end_time, winner, mapname,
+                team1_score, team2_score, team1_name, team2_name
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            ON CONFLICT (matchid) DO NOTHING
+        """
+        await self.pool.execute(
+            query,
+            match_data['matchid'],
+            match_data['start_time'],
+            match_data['end_time'],
+            match_data['winner'],
+            match_data['mapname'],
+            match_data['team1_score'],
+            match_data['team2_score'],
+            match_data['team1_name'],
+            match_data['team2_name']
+        )
+    
+    async def insert_player_data(self, player_data: Dict[str, Any]) -> None:
+        """Insert player data into the cs2_player_data table."""
+        query = """
+            INSERT INTO cs2_player_data (
+                matchid, mapnumber, steamid64, team, name, kills, deaths, damage, assists,
+                enemy5ks, enemy4ks, enemy3ks, enemy2ks, utility_count, utility_damage,
+                utility_successes, utility_enemies, flash_count, flash_successes,
+                health_points_removed_total, health_points_dealt_total, shots_fired_total,
+                shots_on_target_total, v1_count, v1_wins, v2_count, v2_wins,
+                entry_count, entry_wins, equipment_value, money_saved, kill_reward,
+                live_time, head_shot_kills, cash_earned, enemies_flashed
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
+                     $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28,
+                     $29, $30, $31, $32, $33, $34, $35, $36)
+        """
+        await self.pool.execute(
+            query,
+            player_data['matchid'],
+            player_data['mapnumber'],
+            player_data['steamid64'],
+            player_data['team'],
+            player_data['name'],
+            player_data['kills'],
+            player_data['deaths'],
+            player_data['damage'],
+            player_data['assists'],
+            player_data['enemy5ks'],
+            player_data['enemy4ks'],
+            player_data['enemy3ks'],
+            player_data['enemy2ks'],
+            player_data['utility_count'],
+            player_data['utility_damage'],
+            player_data['utility_successes'],
+            player_data['utility_enemies'],
+            player_data['flash_count'],
+            player_data['flash_successes'],
+            player_data['health_points_removed_total'],
+            player_data['health_points_dealt_total'],
+            player_data['shots_fired_total'],
+            player_data['shots_on_target_total'],
+            player_data['v1_count'],
+            player_data['v1_wins'],
+            player_data['v2_count'],
+            player_data['v2_wins'],
+            player_data['entry_count'],
+            player_data['entry_wins'],
+            player_data['equipment_value'],
+            player_data['money_saved'],
+            player_data['kill_reward'],
+            player_data['live_time'],
+            player_data['head_shot_kills'],
+            player_data['cash_earned'],
+            player_data['enemies_flashed']
+        )
+    
+    async def get_recent_matches(self, limit: int = 10) -> List[Dict[str, Any]]:
+        """Get recent matches from our database."""
+        query = f"""
+            SELECT * FROM {self.CS2_MATCHES}  
+            ORDER BY created_at DESC 
+            LIMIT $1
+        """
+        rows = await self.pool.fetch(query, limit)
+        return [dict(row) for row in rows]
+    
+    async def get_match_players(self, match_id: int) -> List[Dict[str, Any]]:
+        """Get all player data for a specific match."""
+        query = f"""
+            SELECT * FROM {self.CS2_PLAYER_DATA} 
+            WHERE matchid = $1 
+            ORDER BY kills DESC
+        """
+        rows = await self.pool.fetch(query, match_id)
+        return [dict(row) for row in rows]

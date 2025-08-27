@@ -1,127 +1,112 @@
 import logging
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
+from typing import List, Dict, Any, Optional, Tuple
 from bot import Zhenpai
-from .db import CS2MySQLDatabase
+from .db import CS2MySQLDb, CS2PostgresDb
 
 log: logging.Logger = logging.getLogger(__name__)
 
 class CS2(commands.Cog):
-    """ Counter-Strike 2 inhouse bot functionality
-    """
+    """ Counter-Strike 2 inhouse tracking for the friends """
 
     def __init__(self, bot: Zhenpai):
         self.bot = bot
-        self.db = CS2MySQLDatabase()
+        self.mysql_db = CS2MySQLDb()
+        self.postgres_db = CS2PostgresDb(bot.db_pool)
+        self.last_processed_match_id = 0
 
     async def cog_load(self):
-        """Initialize database connection when cog loads."""
+        """Initialize database connections and start polling task."""
         try:
-            await self.db.connect()
-            log.info("CS2 cog loaded and database connected")
+            await self.mysql_db.connect()
+            self.last_processed_match_id = await self.postgres_db.get_last_processed_match_id() or 0
+            log.info(f"CS2 cog loaded. Last processed match ID: {self.last_processed_match_id}")
+            
+            # Start the polling task
+            self.poll_matches.start()
         except Exception as e:
-            log.error(f"Failed to connect to CS2 database: {e}")
+            log.error(f"Failed to initialize CS2 cog: {e}")
 
     async def cog_unload(self):
-        """Clean up database connection when cog unloads."""
-        await self.db.close()
-        log.info("CS2 cog unloaded and database disconnected")
+        """Clean up database connections and stop polling task."""
+        self.poll_matches.cancel()
+        await self.mysql_db.close()
+        log.info("CS2 cog unloaded")
+
+    def _check_if_complete_match(self, match: Dict[str, Any]):
+        """
+        Sometimes matchzy doesn't mark an end_time or winner for the match so we should base it off scores.
+        """
+        return match['team1_score'] or match['team2_score']
+
+    @tasks.loop(minutes=1)
+    async def poll_matches(self):
+        """Poll MySQL for new matches every minute and replicate to PostgreSQL."""
+        try:
+            # Get new matches from MySQL
+            new_matches = await self.mysql_db.get_matches_greater_than_matchid(self.last_processed_match_id)
+            if not new_matches:
+                log.info("No new matches found")
+                return
+            
+            # Filter for complete matches in Python
+            complete_matches = [match for match in new_matches if self._check_if_complete_match(match)]
+            if not complete_matches:
+                log.info("No complete matches found in new batch")
+                return
+
+            processed_count = 0
+            for match in complete_matches:
+                try:
+                    matchid = match['matchid']
+                    log.info(f"Processing matchid {matchid} for cs2 stats.")
+                    maps_data = await self.mysql_db.get_map_stats_for_match(matchid)
+
+                    # Process and insert match data
+                    match_data = self._build_match_data(maps_data, match)
+                    await self.postgres_db.insert_match(match_data)
+
+                    # Process and insert player data
+                    players_data = await self.mysql_db.get_player_stats_for_match(matchid)
+                    match_players = [p for p in players_data if p['team'] != "Spectator"]
+                    if len(match_players) != 10:
+                        log.warning(f"Not 10 players for {matchid}")
+                    for player in match_players:
+                        await self.postgres_db.insert_player_data(player)
+                    
+                    processed_count += 1
+                    self.last_processed_match_id = max(self.last_processed_match_id, match['matchid'])
+                    
+                except Exception as e:
+                    log.error(f"Error processing match {match['matchid']}: {e}")
+            
+            if processed_count > 0:
+                log.info(f"Successfully processed {processed_count} matches")
+                
+        except Exception as e:
+            log.error(f"Error in poll_matches task: {e}")
+    
+    def _build_match_data(self, maps_data: Dict[str, Any], match_data: Dict[str, Any]):
+        return {
+            "matchid": maps_data['matchid'],
+            "start_time": maps_data['start_time'],
+            "end_time": maps_data['end_time'] or match_data['end_time'] or None, # this often doesnt write
+            "winner": maps_data['winner'] or match_data['winner'] or None,
+            "mapname": maps_data['mapname'],
+            "team1_score": maps_data['team1_score'],
+            "team2_score": maps_data['team2_score'],
+            "team1_name": match_data['team1_name'],
+            "team2_name": match_data['team2_name'],
+        }
+
+    @poll_matches.before_loop
+    async def before_poll_matches(self):
+        """Wait for bot to be ready before starting polling."""
+        await self.bot.wait_until_ready()
+        log.info("Starting CS2 match polling task")
 
     @commands.command(name="cs2")
     async def cs2_command(self, ctx: commands.Context):
-        """ Basic CS2 command placeholder. """
+        """Basic CS2 command placeholder."""
         await ctx.send("CS2 cog is working! 🎮")
-
-    @commands.command(name="cs2tables")
-    async def list_tables(self, ctx: commands.Context):
-        """List all tables in the CS2 database."""
-        try:
-            tables = await self.db.get_all_tables()
-            if tables:
-                table_list = "\n".join([f"• {table}" for table in tables])
-                embed = discord.Embed(
-                    title="CS2 Database Tables",
-                    description=f"Found {len(tables)} table(s):\n{table_list}",
-                    color=discord.Color.blue()
-                )
-                await ctx.send(embed=embed)
-            else:
-                await ctx.send("No tables found in the database.")
-        except Exception as e:
-            await ctx.send(f"Error accessing database: {str(e)}")
-
-    @commands.command(name="cs2schema")
-    async def show_schema(self, ctx: commands.Context, table_name: str):
-        """Show the schema of a specific table."""
-        try:
-            schema = await self.db.get_table_schema(table_name)
-            if schema:
-                schema_text = "\n".join([
-                    f"• **{col['field']}** - {col['type']} ({'NULL' if col['null'] == 'YES' else 'NOT NULL'})"
-                    for col in schema
-                ])
-                embed = discord.Embed(
-                    title=f"Schema for table: {table_name}",
-                    description=schema_text,
-                    color=discord.Color.green()
-                )
-                await ctx.send(embed=embed)
-            else:
-                await ctx.send(f"Table '{table_name}' not found or has no columns.")
-        except Exception as e:
-            await ctx.send(f"Error getting schema: {str(e)}")
-
-    @commands.command(name="cs2data")
-    async def show_data(self, ctx: commands.Context, table_name: str, limit: int = 10):
-        """Show data from a specific table (default limit: 10 rows)."""
-        if limit > 50:
-            await ctx.send("Limit cannot exceed 50 rows for safety.")
-            return
-        
-        try:
-            data = await self.db.get_table_data(table_name, limit)
-            count = await self.db.get_table_count(table_name)
-            
-            if data:
-                # Create a formatted display of the data
-                if len(data) > 0:
-                    # Get column names from first row
-                    columns = list(data[0].keys())
-                    
-                    # Create a table-like display
-                    table_text = " | ".join(columns) + "\n"
-                    table_text += "-" * len(table_text) + "\n"
-                    
-                    for row in data[:5]:  # Show first 5 rows in message
-                        row_values = [str(row.get(col, ''))[:20] for col in columns]  # Truncate long values
-                        table_text += " | ".join(row_values) + "\n"
-                    
-                    if len(data) > 5:
-                        table_text += f"\n... and {len(data) - 5} more rows"
-                    
-                    embed = discord.Embed(
-                        title=f"Data from {table_name}",
-                        description=f"Showing {len(data)} of {count} total rows:\n```\n{table_text}\n```",
-                        color=discord.Color.orange()
-                    )
-                    await ctx.send(embed=embed)
-                else:
-                    await ctx.send(f"Table '{table_name}' is empty.")
-            else:
-                await ctx.send(f"Table '{table_name}' not found or has no data.")
-        except Exception as e:
-            await ctx.send(f"Error getting data: {str(e)}")
-
-    @commands.command(name="cs2count")
-    async def show_count(self, ctx: commands.Context, table_name: str):
-        """Show the total number of rows in a table."""
-        try:
-            count = await self.db.get_table_count(table_name)
-            embed = discord.Embed(
-                title=f"Row count for {table_name}",
-                description=f"Total rows: **{count}**",
-                color=discord.Color.purple()
-            )
-            await ctx.send(embed=embed)
-        except Exception as e:
-            await ctx.send(f"Error getting count: {str(e)}")
