@@ -151,7 +151,7 @@ class Points(commands.Cog):
             
             embed.add_field(
                 # name=f"📈 History ({display_limit} of {len(history)})",
-                name=f"📈 History"
+                name=f"📈 History",
                 value=history_text,
                 inline=False
             )
