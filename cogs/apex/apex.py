@@ -1,0 +1,130 @@
+from discord.ext import commands
+import discord
+import logging
+import datetime
+import asyncio
+import config
+from bot import Zhenpai
+from typing import List, Dict, Optional 
+from .apex_embed_builder import ApexEmbedBuilder
+from .players import DEFAULT_PLAYERS, fetch_player_data, parse_player_info
+
+log: logging.Logger = logging.getLogger(__name__)
+
+API_URL = "https://api.mozambiquehe.re/maprotation?version=2"
+
+
+class Apex(commands.Cog):
+    """Commands for Apex Legends"""
+
+    def __init__(self, bot: Zhenpai):
+        self.bot = bot
+
+    @commands.command()
+    async def map(self, ctx: commands.Context):
+        api_key = getattr(config, "APEX_API_KEY", None)
+        if not api_key:
+            await ctx.send("APEX_API_KEY is not configured.")
+            return
+
+        try:
+            async with self.bot.http_client.get(
+                API_URL, headers={"Authorization": api_key}
+            ) as resp:
+                if resp.status != 200:
+                    await ctx.send(
+                        f"Failed to fetch map rotation (status {resp.status})."
+                    )
+                    return
+                data = await resp.json()
+        except Exception as e:
+            log.exception("Error fetching Apex map rotation: %s", e)
+            await ctx.send("Error fetching map rotation.")
+            return
+
+        ranked = (data or {}).get("ranked", {})
+        current = ranked.get("current", {})
+        next_map_info = ranked.get("next", {})
+
+        current_map_name = current.get("map") or "Unknown"
+        next_map_name = next_map_info.get("map") or "Unknown"
+
+        remaining_secs = current.get("remainingSecs")
+        if remaining_secs is None:
+            end_ts = current.get("end")
+            if isinstance(end_ts, int):
+                now_seconds = int(
+                    datetime.datetime.now(
+                        datetime.timezone.utc
+                    ).timestamp()
+                )
+                remaining_secs = max(0, end_ts - now_seconds)
+            else:
+                remaining_secs = 0
+
+        hours_remaining = remaining_secs // 3600
+        minutes_remaining = (remaining_secs % 3600) // 60
+
+        await ctx.send(
+            f"Current ranked map is **{current_map_name}** for "
+            f"**{hours_remaining} hours {minutes_remaining} minutes**. "
+            f"Next map is **{next_map_name}**."
+        )
+
+    @commands.command()
+    async def split(self, ctx: commands.Context):
+        """Get the countdown to the next Apex Legends season/split"""
+        await ctx.send("Couldn't find a programatic way to do this")
+        pass
+
+    @commands.command()
+    async def playing(self, ctx: commands.Context):
+        """Check which players are currently in game"""
+        api_key = getattr(config, "APEX_API_KEY", None)
+        if not api_key:
+            await ctx.send("APEX_API_KEY is not configured.")
+            return
+
+        # just showing a typing indicator while processing
+        # since this takes forever
+        async with ctx.typing():
+            players_in_game = []
+            players_online = []
+            players_offline = []
+
+            for player_uid in DEFAULT_PLAYERS:
+                try:
+                    # waiting 0.2 seconds between API calls to avoid rate limiting
+                    if player_uid != DEFAULT_PLAYERS[0]:
+                        await asyncio.sleep(0.2)
+
+                    player_data = await fetch_player_data(
+                        self.bot, api_key, player_uid
+                    )
+                    if not player_data:
+                        players_offline.append(player_uid)
+                        continue
+
+                    player_info = parse_player_info(
+                        player_data, player_uid
+                    )
+                    if player_info["status"] == "in_game":
+                        players_in_game.append(player_info)
+                    elif player_info["status"] in ["online", "invite"]:
+                        players_online.append(player_info)
+                    else:
+                        players_offline.append(player_info)
+
+                except Exception as e:
+                    log.exception(
+                        "Error fetching data for player UID %s: %s",
+                        player_uid,
+                        e,
+                    )
+                    players_offline.append(player_uid)
+
+            # Create and send embed
+            embed = ApexEmbedBuilder.create_playing_embed(
+                players_in_game, players_online
+            )
+            await ctx.send(embed=embed)
