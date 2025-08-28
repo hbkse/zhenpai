@@ -3,6 +3,8 @@
 DEFAULT_PLAYERS = [
     "2411561527",  # Kanav
     "2264348150",  # Zaporteza
+    "1006917456785", # curryman
+    "1000111915477", # pp
     "2310441224",  # B1LL
     "76561197984898546",  # firechuong
     "1007843832232",  # sam100
@@ -10,7 +12,9 @@ DEFAULT_PLAYERS = [
     "1009818857089",  # NotHeartbreaker
     "2411660248",  # Real_Life_Decoy
     "1011551048572",  # genzbossandamini
-    "1013320161195",  # ratgodx
+    "1013320161195",  # ratgodx,
+    "1011048414851", # ugly
+    "2348641801", # AqukinnMaster
 ]
 
 
