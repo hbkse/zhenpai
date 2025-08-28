@@ -5,7 +5,7 @@ import datetime
 import asyncio
 import config
 from bot import Zhenpai
-from typing import List, Dict, Optional 
+from typing import List, Dict, Optional
 from .apex_embed_builder import ApexEmbedBuilder
 from .players import DEFAULT_PLAYERS, fetch_player_data, parse_player_info
 
@@ -54,9 +54,7 @@ class Apex(commands.Cog):
             end_ts = current.get("end")
             if isinstance(end_ts, int):
                 now_seconds = int(
-                    datetime.datetime.now(
-                        datetime.timezone.utc
-                    ).timestamp()
+                    datetime.datetime.now(datetime.timezone.utc).timestamp()
                 )
                 remaining_secs = max(0, end_ts - now_seconds)
             else:
@@ -91,23 +89,35 @@ class Apex(commands.Cog):
             players_in_game = []
             players_online = []
             players_offline = []
+            errors = []
+            total_players = len(DEFAULT_PLAYERS)
 
-            for player_uid in DEFAULT_PLAYERS:
+            for i, player_uid in enumerate(DEFAULT_PLAYERS):
                 try:
-                    # waiting 0.2 seconds between API calls to avoid rate limiting
-                    if player_uid != DEFAULT_PLAYERS[0]:
-                        await asyncio.sleep(0.2)
-
-                    player_data = await fetch_player_data(
-                        self.bot, api_key, player_uid
+                    log.debug(
+                        "Fetching data for player UID %s (%d/%d)",
+                        player_uid,
+                        i + 1,
+                        total_players,
                     )
+
+                    player_data = await fetch_player_data(self.bot, api_key, player_uid)
                     if not player_data:
+                        log.warning("No data returned for player UID %s", player_uid)
                         players_offline.append(player_uid)
                         continue
 
-                    player_info = parse_player_info(
-                        player_data, player_uid
-                    )
+                    if isinstance(player_data, dict) and "error" in player_data:
+                        log.warning(
+                            "API error for player UID %s: %s - %s",
+                            player_uid,
+                            error_type,
+                            error_msg,
+                        )
+                        players_offline.append(player_uid)
+                        continue
+
+                    player_info = parse_player_info(player_data, player_uid)
                     if player_info["status"] == "in_game":
                         players_in_game.append(player_info)
                     elif player_info["status"] in ["online", "invite"]:
@@ -116,15 +126,16 @@ class Apex(commands.Cog):
                         players_offline.append(player_info)
 
                 except Exception as e:
-                    log.exception(
-                        "Error fetching data for player UID %s: %s",
-                        player_uid,
-                        e,
-                    )
+                    log.exception("Error processing player UID %s: %s", player_uid, e)
                     players_offline.append(player_uid)
 
             # Create and send embed
-            embed = ApexEmbedBuilder.create_playing_embed(
-                players_in_game, players_online
-            )
-            await ctx.send(embed=embed)
+            try:
+                embed = ApexEmbedBuilder.create_playing_embed(
+                    players_in_game, players_online
+                )
+
+                await ctx.send(embed=embed)
+
+            except Exception as e:
+                log.exception("Error creating/sending embed: %s", e)

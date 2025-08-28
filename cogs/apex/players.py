@@ -3,14 +3,14 @@
 DEFAULT_PLAYERS = [
     "2411561527",  # Kanav
     "2264348150",  # Zaporteza
-    "2310441224",   # B1LL
+    "2310441224",  # B1LL
     "76561197984898546",  # firechuong
     "1007843832232",  # sam100
     "1003694528166",  # ImARailgun
     "1009818857089",  # NotHeartbreaker
     "2411660248",  # Real_Life_Decoy
     "1011551048572",  # genzbossandamini
-    "1013320161195"  # ratgodx
+    "1013320161195",  # ratgodx
 ]
 
 
@@ -20,9 +20,7 @@ from bot import Zhenpai
 
 log: logging.Logger = logging.getLogger(__name__)
 
-PLAYER_STATUS_URL = (
-    "https://api.mozambiquehe.re/bridge?version=5&platform=PC&uid={uid}"
-)
+PLAYER_STATUS_URL = "https://api.mozambiquehe.re/bridge?version=5&platform=PC&uid={uid}"
 
 
 async def fetch_player_data(
@@ -31,27 +29,28 @@ async def fetch_player_data(
     url = PLAYER_STATUS_URL.format(uid=player_uid)
 
     try:
-        async with bot.http_client.get(
-            url, headers={"Authorization": api_key}
-        ) as resp:
+        log.debug("Making API request to %s for player UID %s", url, player_uid)
+        async with bot.http_client.get(url, headers={"Authorization": api_key}) as resp:
             if resp.status == 404:
                 log.info("Player UID %s not found", player_uid)
                 return None
+            elif resp.status == 429:
+                log.warning("Rate limited for player UID %s (429)", player_uid)
+                return {"error": "rate_limited", "message": "API rate limit exceeded"}
             elif resp.status != 200:
                 log.warning(
-                    "Failed to fetch data for player UID %s (status %s)",
-                    player_uid,
-                    resp.status,
+                    "HTTP error for player UID %s (status %s)", player_uid, resp.status
                 )
-                return None
+                return {"error": "http_error", "message": f"HTTP {resp.status}"}
 
             data = await resp.json()
+            log.debug("Successfully fetched data for player UID %s", player_uid)
             return data
     except Exception as e:
         log.exception(
-            "Error fetching player data for UID %s: %s", player_uid, e
+            "Network error fetching player data for UID %s: %s", player_uid, e
         )
-        return None
+        return {"error": "connection_error", "message": str(e)}
 
 
 def parse_player_info(data: Dict, player_name: str) -> Dict:
@@ -94,5 +93,5 @@ def parse_player_info(data: Dict, player_name: str) -> Dict:
         "rankLabel": rank_label,
         "rankScore": rank_score,
         "legend": selected_legend,
-        "status": status
+        "status": status,
     }
