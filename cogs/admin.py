@@ -108,7 +108,7 @@ class Admin(commands.Cog):
         try:
             # Validate table name to prevent SQL injection
             allowed_tables = {
-                'cs2_matches', 'cs2_player_stats', 'users', 'points'
+                'cs2_matches', 'cs2_player_stats', 'users', 'points', 'processed_events'
             }
             
             if table_name.lower() not in allowed_tables:

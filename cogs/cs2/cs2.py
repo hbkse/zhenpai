@@ -1,3 +1,5 @@
+import asyncio
+from datetime import datetime
 import logging
 import discord
 from discord.ext import commands, tasks
@@ -20,7 +22,6 @@ class CS2(commands.Cog):
         """Initialize database connections and start polling task."""
         try:
             await self.mysql_db.connect()
-            self.last_processed_match_id = await self.postgres_db.get_last_processed_match_id() or 0
             log.info(f"CS2 cog loaded. Last processed match ID: {self.last_processed_match_id}")
             
             # Start the polling task
@@ -34,37 +35,76 @@ class CS2(commands.Cog):
         await self.mysql_db.close()
         log.info("CS2 cog unloaded")
 
-    def _check_if_complete_match(self, match: Dict[str, Any]):
+    def _check_if_complete_match(self, maps_data: Dict[str, Any], match_data: Dict[str, Any]):
         """
         Sometimes matchzy doesn't mark an end_time or winner for the match so we should base it off scores.
         """
-        return match['team1_score'] or match['team2_score']
+        # if team1_score or team2_score was set, then match was complete
+        match_score_set = (int(match_data['team1_score']) != 0) or (int(match_data['team2_score']) != 0)
+        
+        # if map_data team score hit 13, 16, 19 etc. , then match was complete, unless ongoing OT
+        team1 = int(maps_data['team1_score'])
+        team2 = int(maps_data['team2_score'])
+        higher = max(team1, team2)
+        terminal_round_count_met = higher in [13, 16, 19, 22, 25]
+        # check if we're in an ongoing OT scenario, like 13-12 or 16-15 is not terminal
+        not_ongoing_overtime = terminal_round_count_met and (abs(team1 - team2) > 1)
+
+        return match_score_set or not_ongoing_overtime
+
+    def _build_match_data(self, maps_data: Dict[str, Any], match_data: Dict[str, Any]):
+        winner = match_data['team1_name'] if maps_data['team1_score'] > maps_data['team2_score'] else match_data['team2_name']
+
+        return {
+            "matchid": maps_data['matchid'],
+            "start_time": maps_data['start_time'],
+            "end_time": maps_data['end_time'] or match_data['end_time'] or datetime.utcnow(), # this often doesnt write
+            "winner": maps_data['winner'] or match_data['winner'] or winner,
+            "mapname": maps_data['mapname'],
+            "team1_score": maps_data['team1_score'],
+            "team2_score": maps_data['team2_score'],
+            "team1_name": match_data['team1_name'],
+            "team2_name": match_data['team2_name'],
+        }
 
     @tasks.loop(minutes=1)
     async def poll_matches(self):
-        """Poll MySQL for new matches every minute and replicate to PostgreSQL."""
+        """Poll the MatchZy MySQL for new matches and replicate to PostgreSQL."""
         try:
+            last_processed_id = await self.postgres_db.get_last_processed_match_id()
+            log.info(f"Last processed CS2 matchid: {last_processed_id}")
+
             # Get new matches from MySQL
-            new_matches = await self.mysql_db.get_matches_greater_than_matchid(self.last_processed_match_id)
+            new_matches = await self.mysql_db.get_matches_greater_than_matchid(last_processed_id)
             if not new_matches:
-                log.info("No new matches found")
                 return
             
-            # Filter for complete matches in Python
-            complete_matches = [match for match in new_matches if self._check_if_complete_match(match)]
+            match_ids = [match['matchid'] for match in new_matches]
+            log.info(f"Found new matches to replicate to postgres {','.join(map(str, match_ids))}")
+
+            maps_data = []
+            for matchid in match_ids:
+                map_data = await self.mysql_db.get_map_stats_for_match(matchid)
+                maps_data.append(map_data)
+
+            # figure out which matches are real completed matches, and then 
+            complete_matches = []
+            for map_data, match_data in zip(maps_data, new_matches):
+                if not map_data:
+                    continue # it's possible there's no map data but there is match data
+                if self._check_if_complete_match(map_data, match_data):
+                    complete_matches.append(self._build_match_data(map_data, match_data))
+
             if not complete_matches:
-                log.info("No complete matches found in new batch")
                 return
 
-            processed_count = 0
-            for match in complete_matches:
-                try:
-                    matchid = match['matchid']
-                    log.info(f"Processing matchid {matchid} for cs2 stats.")
-                    maps_data = await self.mysql_db.get_map_stats_for_match(matchid)
+            log.info(f"Found {len(complete_matches)} completed matches to process: {complete_matches}")
 
-                    # Process and insert match data
-                    match_data = self._build_match_data(maps_data, match)
+            processed_count = 0
+            for match_data in complete_matches:
+                try:
+                    matchid = match_data['matchid']
+                    log.info(f"Processing matchid {matchid} for cs2 stats.")
                     await self.postgres_db.insert_match(match_data)
 
                     # Process and insert player data
@@ -76,37 +116,25 @@ class CS2(commands.Cog):
                         await self.postgres_db.insert_player_data(player)
                     
                     processed_count += 1
-                    self.last_processed_match_id = max(self.last_processed_match_id, match['matchid'])
                     
                 except Exception as e:
-                    log.error(f"Error processing match {match['matchid']}: {e}")
+                    log.error(f"Error processing match {matchid}: {e}")
+                    # important to break here so we don't continue execution and update 
+                    # last_processed_match_id and then never reprocess this
+                    break 
             
             if processed_count > 0:
                 log.info(f"Successfully processed {processed_count} matches")
                 
         except Exception as e:
             log.error(f"Error in poll_matches task: {e}")
-    
-    def _build_match_data(self, maps_data: Dict[str, Any], match_data: Dict[str, Any]):
-        return {
-            "matchid": maps_data['matchid'],
-            "start_time": maps_data['start_time'],
-            "end_time": maps_data['end_time'] or match_data['end_time'] or None, # this often doesnt write
-            "winner": maps_data['winner'] or match_data['winner'] or None,
-            "mapname": maps_data['mapname'],
-            "team1_score": maps_data['team1_score'],
-            "team2_score": maps_data['team2_score'],
-            "team1_name": match_data['team1_name'],
-            "team2_name": match_data['team2_name'],
-        }
 
     @poll_matches.before_loop
     async def before_poll_matches(self):
-        """Wait for bot to be ready before starting polling."""
         await self.bot.wait_until_ready()
-        log.info("Starting CS2 match polling task")
+        log.info(f"Starting {__name__} update loop")
 
-    @commands.command(name="cs2")
-    async def cs2_command(self, ctx: commands.Context):
-        """Basic CS2 command placeholder."""
-        await ctx.send("CS2 cog is working! 🎮")
+    @poll_matches.after_loop
+    async def after_poll_matches(self):
+        log.info(f"Stopping {__name__} update loop")
+

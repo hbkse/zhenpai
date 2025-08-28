@@ -56,8 +56,12 @@ class CS2MySQLDb:
         """Get all maps for a specific matchid."""
         query = f"SELECT * FROM {self.MATCHZY_STATS_MAPS} WHERE matchid = {matchid}"
         res = await self.execute_query(query)
-        assert(len(res) == 1)
-        return res[0]
+
+        # sometimes match exists but not map
+        if len(res) == 1:
+            return res[0]
+        else: 
+            return None
 
     async def execute_query(self, query: str, params: Tuple[Any, ...] = ()) -> List[Dict[str, Any]]:
         """Execute a query and return the results."""
@@ -79,7 +83,7 @@ class CS2PostgresDb:
         """Get the highest matchid from our PostgreSQL table."""
         query = f"SELECT MAX(matchid) as last_match FROM {self.CS2_MATCHES}"
         result = await self.pool.fetchrow(query)
-        return result['last_match'] if result and result['last_match'] else None
+        return result['last_match'] if result and result['last_match'] else 0
 
     async def insert_match(self, match_data: Dict[str, Any]) -> None:
         """Insert a match into the cs2_matches table."""
