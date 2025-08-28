@@ -1,3 +1,11 @@
+import logging
+from typing import Dict, Optional
+from bot import Zhenpai
+
+log: logging.Logger = logging.getLogger(__name__)
+
+PLAYER_STATUS_URL = "https://api.mozambiquehe.re/bridge?version=5&platform=PC&uid={uid}"
+
 # These are their Origin UIDs. Just be mindful of rate limits if we have
 # a lot of players on this list
 DEFAULT_PLAYERS = [
@@ -16,15 +24,6 @@ DEFAULT_PLAYERS = [
     "1011048414851", # ugly
     "2348641801", # AqukinnMaster
 ]
-
-
-import logging
-from typing import Dict, Optional
-from bot import Zhenpai
-
-log: logging.Logger = logging.getLogger(__name__)
-
-PLAYER_STATUS_URL = "https://api.mozambiquehe.re/bridge?version=5&platform=PC&uid={uid}"
 
 
 async def fetch_player_data(
