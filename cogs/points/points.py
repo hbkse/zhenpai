@@ -50,7 +50,7 @@ class Points(commands.Cog):
                 description="No points data found!",
                 color=0xff6b6b
             )
-            await ctx.send(embed=embed)
+            await message.edit(embed=embed)
             return
         
         # Create embed
@@ -150,7 +150,8 @@ class Points(commands.Cog):
             history_text += "```"
             
             embed.add_field(
-                name=f"📈 History ({display_limit} of {len(history)})",
+                # name=f"📈 History ({display_limit} of {len(history)})",
+                name=f"📈 History"
                 value=history_text,
                 inline=False
             )
