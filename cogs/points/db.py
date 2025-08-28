@@ -16,6 +16,49 @@ class PointsDb:
     def __init__(self, pool: Pool):
         self.pool = pool
 
+    async def get_points_leaderboard(self, limit: int = 10):
+        """
+        Get the top users by total points
+        """
+        query = """
+        SELECT 
+            discord_id,
+            SUM(change_value) as total_points
+        FROM points
+        GROUP BY discord_id
+        ORDER BY total_points DESC
+        LIMIT $1
+        """
+        return await self.pool.fetch(query, limit)
+
+    async def get_recent_points_transactions_by_discord_id(self, id: int, limit: int = 10) -> List[Dict[str, Any]]:
+        """
+        Get recent points transactions for a discord user
+        """
+        query = """
+        SELECT 
+            change_value,
+            created_at,
+            category,
+            reason
+        FROM points
+        WHERE discord_id = $1
+        ORDER BY created_at DESC
+        LIMIT $2
+        """
+        return await self.pool.fetch(query, id, limit)
+
+    async def get_total_points_by_discord_id(self, id: int):
+        """
+        Get current total points for a discord user
+        """
+        query = """
+        SELECT COALESCE(SUM(change_value), 0) as total_points
+        FROM points
+        WHERE discord_id = $1
+        """
+        return await self.pool.fetchval(query, id)
+
     async def perform_cs2_event_transaction(self, rows: List[Tuple[Any, ...]], matchid: int):
         """inserts all point records and updates processed_events table in a single transaction"""
         async with self.pool.acquire() as conn:
