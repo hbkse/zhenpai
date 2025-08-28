@@ -109,10 +109,8 @@ class Apex(commands.Cog):
 
                     if isinstance(player_data, dict) and "error" in player_data:
                         log.warning(
-                            "API error for player UID %s: %s - %s",
-                            player_uid,
-                            error_type,
-                            error_msg,
+                            "API error for player UID %s",
+                            player_uid
                         )
                         players_offline.append(player_uid)
                         continue
