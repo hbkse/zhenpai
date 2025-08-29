@@ -18,6 +18,7 @@ DEFAULT_PLAYERS = [
     "1007843832232",  # sam100
     "1003694528166",  # ImARailgun
     "1009818857089",  # NotHeartbreaker
+    "1009688142777", # Th3PinoyDragon
     "2411660248",  # Real_Life_Decoy
     "1011551048572",  # genzbossandamini
     "1013320161195",  # ratgodx,
