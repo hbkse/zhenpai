@@ -102,5 +102,91 @@ def get_cs2_matches():
         log.error(f"Error in match_history endpoint: {e}")
         return jsonify({"error": "Internal server error"}), 500
 
+@app.route('/user_points')
+def get_user_points():
+    """Get user's current points and transaction history
+    
+    Query parameters:
+    - discord_id: Discord user ID (required)
+    - history_limit: Number of history transactions to return (optional, returns all if not specified)
+    """
+    try:
+        discord_id = request.args.get('discord_id', type=int)
+        history_limit = request.args.get('history_limit', type=int)
+        
+        # Validate parameters
+        if not discord_id:
+            return jsonify({"error": "discord_id parameter is required"}), 400
+        if history_limit is not None and history_limit < 1:
+            return jsonify({"error": "history_limit must be 1 or greater"}), 400
+        
+        with get_sync_db_connection() as conn:
+            with conn.cursor() as cur:
+                # Get current total points (reusing PointsDb query)
+                points_query = """
+                    SELECT COALESCE(SUM(change_value), 0) as total_points
+                    FROM points
+                    WHERE discord_id = %s
+                """
+                cur.execute(points_query, (discord_id,))
+                total_points_result = cur.fetchone()
+                total_points = total_points_result['total_points'] if total_points_result else 0
+                
+                # Get recent transactions with running balance calculation
+                history_query = """
+                    SELECT 
+                        change_value,
+                        created_at,
+                        category,
+                        reason,
+                        SUM(change_value) OVER (
+                            ORDER BY created_at ASC, id ASC 
+                            ROWS UNBOUNDED PRECEDING
+                        ) as running_balance
+                    FROM points
+                    WHERE discord_id = %s
+                    ORDER BY created_at DESC
+                """ + (f" LIMIT {history_limit}" if history_limit is not None else "")
+                
+                cur.execute(history_query, (discord_id,))
+                history_results = cur.fetchall()
+                
+                # Convert history to list of dictionaries
+                history = []
+                for transaction in history_results:
+                    transaction_dict = dict(transaction)
+                    # Convert datetime to ISO string for JSON serialization
+                    if transaction_dict['created_at']:
+                        transaction_dict['created_at'] = transaction_dict['created_at'].isoformat()
+                    history.append(transaction_dict)
+                
+                # Get user info if available
+                user_query = """
+                    SELECT discord_username, steamid64
+                    FROM users
+                    WHERE discord_id = %s
+                """
+                cur.execute(user_query, (discord_id,))
+                user_result = cur.fetchone()
+                user_info = dict(user_result) if user_result else None
+                
+                result = {
+                    "discord_id": discord_id,
+                    "user_info": user_info,
+                    "current_points": total_points,
+                    "points_history": history,
+                    "history_metadata": {
+                        "limit": history_limit,
+                        "returned_count": len(history)
+                    }
+                }
+        
+        log.info(f"user_points endpoint accessed - discord_id: {discord_id}, history_limit: {history_limit}")
+        return jsonify(result)
+        
+    except Exception as e:
+        log.error(f"Error in user_points endpoint: {e}")
+        return jsonify({"error": "Internal server error"}), 500
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5757, debug=False)
