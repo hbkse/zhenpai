@@ -83,15 +83,23 @@ class Apex(commands.Cog):
             await ctx.send("APEX_API_KEY is not configured.")
             return
 
-        # just showing a typing indicator while processing
-        # since this takes forever
-        async with ctx.typing():
-            players_in_game = []
-            players_online = []
-            players_offline = []
-            errors = []
-            total_players = len(DEFAULT_PLAYERS)
+        # Send loading embed first
+        loading_embed = ApexEmbedBuilder.create_loading_embed()
 
+        message = await ctx.send(embed=loading_embed)
+
+        # Create a task to update the loading message
+        loading_task = ApexEmbedBuilder.create_loading_update_task(
+            message, loading_embed
+        )
+
+        players_in_game = []
+        players_online = []
+        players_offline = []
+        errors = []
+        total_players = len(DEFAULT_PLAYERS)
+
+        try:
             for i, player_uid in enumerate(DEFAULT_PLAYERS):
                 try:
                     log.debug(
@@ -108,10 +116,7 @@ class Apex(commands.Cog):
                         continue
 
                     if isinstance(player_data, dict) and "error" in player_data:
-                        log.warning(
-                            "API error for player UID %s",
-                            player_uid
-                        )
+                        log.warning("API error for player UID %s", player_uid)
                         players_offline.append(player_uid)
                         continue
 
@@ -126,14 +131,20 @@ class Apex(commands.Cog):
                 except Exception as e:
                     log.exception("Error processing player UID %s: %s", player_uid, e)
                     players_offline.append(player_uid)
+        except Exception as e:
+            await ApexEmbedBuilder.cancel_loading_task(loading_task)
+            raise
 
-            # Create and send embed
-            try:
-                embed = ApexEmbedBuilder.create_playing_embed(
-                    players_in_game, players_online
-                )
+        # Cancel the loading task and create final embed
+        await ApexEmbedBuilder.cancel_loading_task(loading_task)
 
-                await ctx.send(embed=embed)
+        # Create and edit message with embed
+        try:
+            embed = ApexEmbedBuilder.create_playing_embed(
+                players_in_game, players_online
+            )
 
-            except Exception as e:
-                log.exception("Error creating/sending embed: %s", e)
+            await message.edit(embed=embed)
+
+        except Exception as e:
+            log.exception("Error creating/sending embed: %s", e)
