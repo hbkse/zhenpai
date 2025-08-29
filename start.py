@@ -60,13 +60,17 @@ def setup_logging():
 async def run_bot():
     async with ClientSession() as http_client:
         async with asyncpg.create_pool(**db_connection_options()) as pool:
+            # Load users from users.json on startup
+            from load_users import load_users_from_json
+            await load_users_from_json()
+            
             async with Zhenpai(http_client=http_client, db_pool=pool) as bot:
                 await bot._run()
 
 def start_flask():
     def run_flask():
-        print("Starting Flask service on port 5000")
-        flask_app.run(host='0.0.0.0', port=5000, debug=False, use_reloader=False)
+        print("Starting Flask service on port 5757")
+        flask_app.run(host='0.0.0.0', port=5757, debug=False, use_reloader=False)
 
     print("Starting flask server")
     flask_thread = threading.Thread(target=run_flask, daemon=True)

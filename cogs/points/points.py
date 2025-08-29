@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 import discord
 from discord.ext import commands, tasks
 import logging
+import os
 
 from cogs.users.db import UsersDb
 from .db import PointsDb
@@ -125,44 +126,52 @@ class Points(commands.Cog):
         )
         
         # History section
-        if history:
-            # Create table header
-            history_text = "```\n"
-            history_text += "Date       | Points  | Category | Reason\n"
-            history_text += "-" * 50 + "\n"
+        # if history:
+        #     # Create table header
+        #     history_text = "```\n"
+        #     history_text += "Date       | Points  | Category | Reason\n"
+        #     history_text += "-" * 50 + "\n"
             
-            # Add each transaction (limit to prevent embed overflow)
-            display_limit = min(10, len(history))  # Show max 10 transactions
+        #     # Add each transaction (limit to prevent embed overflow)
+        #     display_limit = min(10, len(history))  # Show max 10 transactions
             
-            for record in history[:display_limit]:
-                # Format date to be more readable
-                date_str = record['created_at'].strftime("%m/%d %H:%M")
+        #     for record in history[:display_limit]:
+        #         # Format date to be more readable
+        #         date_str = record['created_at'].strftime("%m/%d %H:%M")
                 
-                # Format points with + or - sign and commas
-                points_str = f"+{record['change_value']:,}" if record['change_value'] > 0 else f"{record['change_value']:,}"
+        #         # Format points with + or - sign and commas
+        #         points_str = f"+{record['change_value']:,}" if record['change_value'] > 0 else f"{record['change_value']:,}"
                 
-                # Truncate long reasons to fit
-                reason = record['reason'][:15] + "..." if len(record['reason']) > 15 else record['reason']
-                category = record['category'][:8]  # Limit category length
+        #         # Truncate long reasons to fit
+        #         reason = record['reason'][:15] + "..." if len(record['reason']) > 15 else record['reason']
+        #         category = record['category'][:8]  # Limit category length
                 
-                history_text += f"{date_str:<10} | {points_str:>7} | {category:<8} | {reason}\n"
+        #         history_text += f"{date_str:<10} | {points_str:>7} | {category:<8} | {reason}\n"
             
-            history_text += "```"
+        #     history_text += "```"
             
-            embed.add_field(
-                # name=f"📈 History ({display_limit} of {len(history)})",
-                name=f"📈 History",
-                value=history_text,
-                inline=False
-            )
-        else:
-            embed.add_field(
-                name="📈 History",
-                value="No points history found.",
-                inline=False
-            )
-        embed.set_footer(text="!points !mypoints")
+        #     embed.add_field(
+        #         # name=f"📈 History ({display_limit} of {len(history)})",
+        #         name=f"📈 History",
+        #         value=history_text,
+        #         inline=False
+        #     )
+        # else:
+        #     embed.add_field(
+        #         name="📈 History",
+        #         value="No points history found.",
+        #         inline=False
+        #     )
         
+        # Add main image at bottom of embed
+        cs2_graph_url = os.getenv("CS2_POINTS_GRAPH_URL")
+        if cs2_graph_url:
+            full_url = f"{cs2_graph_url}/user-points?discord_id={ctx.message.author.id}"
+            log.info(f"Loading points graph from: {full_url}")
+            embed.set_image(url=full_url)
+        
+        embed.set_footer(text="!points !mypoints")
+
         await ctx.send(embed=embed)
 
     @tasks.loop(minutes=1)

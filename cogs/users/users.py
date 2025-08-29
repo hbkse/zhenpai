@@ -89,6 +89,10 @@ class Users(commands.Cog):
             log.error(f"Error listing users: {e}")
             await ctx.send(f"❌ Error listing users: {str(e)}")
 
+    async def _process_users_data(self, users_data: List[Dict[str, Any]]) -> tuple[int, int, List[str]]:
+        from .user_utils import process_users_data
+        return await process_users_data(self.db, users_data)
+
     @commands.command()
     async def loadusers(self, ctx: commands.Context):
         """Load users from a .txt or .json file attachment
@@ -136,41 +140,8 @@ class Users(commands.Cog):
                 await ctx.send("❌ JSON should be an array of user objects.")
                 return
             
-            # Process each user
-            processed_count = 0
-            updated_count = 0
-            errors = []
-            
-            for user_data in users_data:
-                try:
-                    # Extract required fields
-                    discord_id = int(user_data.get('id'))
-                    handle = user_data.get('handle')
-                    steam_id = user_data.get('steamId')
-                    
-                    if not discord_id or not handle:
-                        errors.append(f"Missing required fields for user: {user_data}")
-                        continue
-                    
-                    # Convert steam_id to int if present
-                    steamid64 = int(steam_id) if steam_id else None
-                    
-                    # Check if user already exists
-                    existing_user = await self.db.get_user_by_discord_id(discord_id)
-                    
-                    if existing_user:
-                        # Update existing user
-                        await self.db.create_user(discord_id, handle, steamid64)
-                        updated_count += 1
-                    else:
-                        # Create new user
-                        await self.db.create_user(discord_id, handle, steamid64)
-                        processed_count += 1
-                        
-                except (ValueError, KeyError) as e:
-                    errors.append(f"Invalid data for user: {user_data} - {str(e)}")
-                except Exception as e:
-                    errors.append(f"Error processing user {user_data}: {str(e)}")
+            # Process the users
+            processed_count, updated_count, errors = await self._process_users_data(users_data)
             
             # Send results
             embed = discord.Embed(title="User Import Results", color=discord.Color.green())

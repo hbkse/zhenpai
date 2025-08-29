@@ -1,16 +1,29 @@
-version: '3.8'
+version: "3.8"
 
 services:
   postgres-db:
     image: postgres:12.9
     ports:
-      - 5432:5432
+      - ${PGPORT:-5432}:5432
     environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=password
-      - POSTGRES_DB=zhenpai
+      - POSTGRES_USER=${PGUSER}
+      - POSTGRES_PASSWORD=${PGPASSWORD}
+      - POSTGRES_DB=${PGDATABASE}
     volumes:
       - pg-zhenpai:/var/lib/postgresql/data
+
+  flyway:
+    image: flyway/flyway:9.8.1
+    depends_on:
+      - postgres-db
+    environment:
+      - FLYWAY_URL=jdbc:postgresql://postgres-db:5432/${PGDATABASE}
+      - FLYWAY_USER=${PGUSER}
+      - FLYWAY_PASSWORD=${PGPASSWORD}
+      - FLYWAY_LOCATIONS=filesystem:/flyway/sql
+    volumes:
+      - ./migrations:/flyway/sql
+    command: migrate
 
 volumes:
   pg-zhenpai:
