@@ -2,7 +2,7 @@ import discord
 from discord.ext import commands
 import logging
 import json
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple
 from .db import UsersDb
 from bot import Zhenpai
 
@@ -89,7 +89,7 @@ class Users(commands.Cog):
             log.error(f"Error listing users: {e}")
             await ctx.send(f"❌ Error listing users: {str(e)}")
 
-    async def _process_users_data(self, users_data: List[Dict[str, Any]]) -> tuple[int, int, List[str]]:
+    async def _process_users_data(self, users_data: List[Dict[str, Any]]) -> Tuple[int, int, List[str]]:
         from .user_utils import process_users_data
         return await process_users_data(self.db, users_data)
 
