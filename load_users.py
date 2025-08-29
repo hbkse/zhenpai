@@ -64,7 +64,10 @@ async def load_users_from_json():
         # Process users
         logger.info(f"Processing {len(users_data)} users from users.json...")
         from cogs.users.user_utils import process_users_data
-        processed_count, updated_count, errors = await process_users_data(pool, users_data)
+        from cogs.users.db import UsersDb
+        
+        users_db = UsersDb(pool)
+        processed_count, updated_count, errors = await process_users_data(users_db, users_data)
         
         # Log results
         logger.info(f"User loading completed:")
