@@ -5,11 +5,12 @@ Contains common logic for creating/updating users from data
 
 from typing import List, Dict, Any
 import logging
+from .db import UsersDb
 
 logger = logging.getLogger(__name__)
 
 async def process_users_data(
-    users_db: 'UsersDb', 
+    users_db: UsersDb, 
     users_data: List[Dict[str, Any]]
 ) -> tuple[int, int, List[str]]:
     """Process a list of user data and create/update users in the database
