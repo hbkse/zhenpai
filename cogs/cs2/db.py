@@ -25,7 +25,7 @@ class CS2MySQLDb:
                 user=config.MYSQL_USER,
                 password=config.MYSQL_PASSWORD,
                 db=config.MYSQL_DATABASE,
-                autocommit=False,  # Read-only, no need for autocommit
+                autocommit=True,  # if you don't commit after read, conn won't update to next consistent version
                 minsize=1,
                 maxsize=5,  # Reduced pool size for read-only operations
                 charset='utf8mb4'
