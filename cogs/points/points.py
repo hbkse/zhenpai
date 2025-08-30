@@ -108,8 +108,43 @@ class Points(commands.Cog):
         await message.edit(embed=embed)
 
     @commands.command()
-    async def mypoints(self, ctx: commands.Context):
+    async def mypoints(self, ctx: commands.Context, view_type: str = "graph"):
         """Displays the points history and total for this user"""
+        if view_type.lower() == "table":
+            await self.mypoints_table(ctx)
+        else:
+            await self.mypoints_graph(ctx)
+
+    async def mypoints_graph(self, ctx: commands.Context):
+        """Display points with graph view"""
+        total = await self.db.get_total_points_by_discord_id(ctx.message.author.id)
+
+        # Create embed
+        embed = discord.Embed(
+            title=f"💰 Total Points: **{total:,}**",
+            color=0x00ff00 if total > 0 else 0xff6b6b,  # Green if positive, red-ish if zero/negative
+        )
+        
+        # Add user info
+        embed.set_author(
+            name=ctx.message.author.display_name,
+            icon_url=ctx.message.author.avatar.url if ctx.message.author.avatar else None
+        )
+        
+        # Add main image at bottom of embed
+        cs2_graph_url = os.getenv("CS2_POINTS_GRAPH_URL")
+        if cs2_graph_url:
+            timestamp = int(datetime.now(timezone.utc).timestamp())
+            full_url = f"{cs2_graph_url}/user-points?discord_id={ctx.message.author.id}&t={timestamp}"
+            log.info(f"Loading points graph from: {full_url}")
+            embed.set_image(url=full_url)
+        
+        embed.set_footer(text="!points !mypoints !mypoints table")
+
+        await ctx.send(embed=embed)
+
+    async def mypoints_table(self, ctx: commands.Context):
+        """Display points with table view"""
         total = await self.db.get_total_points_by_discord_id(ctx.message.author.id)
         history = await self.db.get_recent_points_transactions_by_discord_id(ctx.message.author.id)
 
@@ -126,54 +161,130 @@ class Points(commands.Cog):
         )
         
         # History section
-        # if history:
-        #     # Create table header
-        #     history_text = "```\n"
-        #     history_text += "Date       | Points  | Category | Reason\n"
-        #     history_text += "-" * 50 + "\n"
+        if history:
+            # Create table header
+            history_text = "```\n"
+            history_text += "Date       | Points  | Category | Reason\n"
+            history_text += "-" * 50 + "\n"
             
-        #     # Add each transaction (limit to prevent embed overflow)
-        #     display_limit = min(10, len(history))  # Show max 10 transactions
+            # Add each transaction (limit to prevent embed overflow)
+            display_limit = min(10, len(history))  # Show max 10 transactions
             
-        #     for record in history[:display_limit]:
-        #         # Format date to be more readable
-        #         date_str = record['created_at'].strftime("%m/%d %H:%M")
+            for record in history[:display_limit]:
+                # Format date to be more readable
+                date_str = record['created_at'].strftime("%m/%d %H:%M")
                 
-        #         # Format points with + or - sign and commas
-        #         points_str = f"+{record['change_value']:,}" if record['change_value'] > 0 else f"{record['change_value']:,}"
+                # Format points with + or - sign and commas
+                points_str = f"+{record['change_value']:,}" if record['change_value'] > 0 else f"{record['change_value']:,}"
                 
-        #         # Truncate long reasons to fit
-        #         reason = record['reason'][:15] + "..." if len(record['reason']) > 15 else record['reason']
-        #         category = record['category'][:8]  # Limit category length
+                # Truncate long reasons to fit
+                reason = record['reason'][:15] + "..." if len(record['reason']) > 15 else record['reason']
+                category = record['category'][:8]  # Limit category length
                 
-        #         history_text += f"{date_str:<10} | {points_str:>7} | {category:<8} | {reason}\n"
+                history_text += f"{date_str:<10} | {points_str:>7} | {category:<8} | {reason}\n"
             
-        #     history_text += "```"
+            history_text += "```"
             
-        #     embed.add_field(
-        #         # name=f"📈 History ({display_limit} of {len(history)})",
-        #         name=f"📈 History",
-        #         value=history_text,
-        #         inline=False
-        #     )
-        # else:
-        #     embed.add_field(
-        #         name="📈 History",
-        #         value="No points history found.",
-        #         inline=False
-        #     )
+            embed.add_field(
+                name=f"📈 History",
+                value=history_text,
+                inline=False
+            )
+        else:
+            embed.add_field(
+                name="📈 History",
+                value="No points history found.",
+                inline=False
+            )
         
-        # Add main image at bottom of embed
-        cs2_graph_url = os.getenv("CS2_POINTS_GRAPH_URL")
-        if cs2_graph_url:
-            timestamp = int(datetime.now(timezone.utc).timestamp())
-            full_url = f"{cs2_graph_url}/user-points?discord_id={ctx.message.author.id}&t={timestamp}"
-            log.info(f"Loading points graph from: {full_url}")
-            embed.set_image(url=full_url)
-        
-        embed.set_footer(text="!points !mypoints")
+        embed.set_footer(text="!points !mypoints !mypoints table")
 
         await ctx.send(embed=embed)
+
+    @commands.command()
+    @commands.is_owner()
+    async def rewardpoints(self, ctx: commands.Context, user: discord.User, amount: int, *, reason: str):
+        """Manually reward or remove points from a user (Admin only)
+        
+        Usage: !rewardpoints @user 100 Great performance in tournament
+               !rewardpoints @user -50 Rule violation penalty
+        """
+        try:
+            # Validate inputs
+            if abs(amount) > 100000:  # Sanity check to prevent extreme values
+                await ctx.send("❌ Amount must be between -100,000 and 100,000 points.")
+                return
+            
+            if len(reason) > 255:  # Reasonable limit for reason length
+                await ctx.send("❌ Reason must be 255 characters or less.")
+                return
+            
+            # Add the points reward/penalty to the database
+            await self.db.add_points_reward(user.id, amount, reason)
+            
+            # Get updated total for the user
+            new_total = await self.db.get_total_points_by_discord_id(user.id)
+            
+            # Create confirmation embed
+            action = "rewarded" if amount > 0 else "deducted"
+            emoji = "💰" if amount > 0 else "💸"
+            color = 0x00ff00 if amount > 0 else 0xff6b6b
+            
+            embed = discord.Embed(
+                title=f"{emoji} Points {action.capitalize()}",
+                description=f"**{amount:+,}** points {action} {'to' if amount > 0 else 'from'} {user.display_name}",
+                color=color,
+                timestamp=datetime.utcnow()
+            )
+            
+            embed.add_field(
+                name="📝 Reason",
+                value=reason,
+                inline=False
+            )
+            
+            embed.add_field(
+                name="📊 New Total",
+                value=f"{new_total:,} points",
+                inline=True
+            )
+            
+            embed.add_field(
+                name="👤 User",
+                value=user.mention,
+                inline=True
+            )
+            
+            embed.add_field(
+                name="🛡️ Admin",
+                value=ctx.author.mention,
+                inline=True
+            )
+            
+            embed.set_thumbnail(url=user.avatar.url if user.avatar else None)
+            embed.set_footer(text="Admin Reward")
+            
+            await ctx.send(embed=embed)
+            log.info(f"Admin {ctx.author.id} rewarded {amount} points to user {user.id} for reason: {reason}")
+            
+        except Exception as e:
+            log.error(f"Error in rewardpoints command: {e}")
+            await ctx.send("❌ An error occurred while processing the points reward. Please try again.")
+
+    @rewardpoints.error
+    async def rewardpoints_error(self, ctx: commands.Context, error):
+        """Handle errors for the rewardpoints command"""
+        if isinstance(error, commands.MissingPermissions):
+            await ctx.send("❌ You need administrator permissions to use this command.")
+        elif isinstance(error, commands.UserNotFound):
+            await ctx.send("❌ User not found. Please mention a valid user.")
+        elif isinstance(error, commands.BadArgument):
+            await ctx.send("❌ Invalid arguments. Usage: `!rewardpoints @user <amount> <reason>`")
+        elif isinstance(error, commands.MissingRequiredArgument):
+            await ctx.send("❌ Missing required arguments. Usage: `!rewardpoints @user <amount> <reason>`")
+        else:
+            log.error(f"Unexpected error in rewardpoints command: {error}")
+            await ctx.send("❌ An unexpected error occurred.")
 
     @tasks.loop(minutes=1)
     async def poll_events(self):

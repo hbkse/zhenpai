@@ -59,6 +59,16 @@ class PointsDb:
         """
         return await self.pool.fetchval(query, id)
 
+    async def add_points_reward(self, discord_id: int, change_value: int, reason: str):
+        """
+        Add a manual points reward for a user
+        """
+        query = """
+        INSERT INTO points (discord_id, change_value, created_at, category, reason, event_source, event_source_id)
+        VALUES ($1, $2, NOW(), $3, $4, $5, $6)
+        """
+        await self.pool.execute(query, discord_id, change_value, "Admin Reward", reason, None, None)
+
     async def perform_cs2_event_transaction(self, rows: List[Tuple[Any, ...]], matchid: int):
         """inserts all point records and updates processed_events table in a single transaction"""
         async with self.pool.acquire() as conn:
