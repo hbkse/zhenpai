@@ -22,7 +22,7 @@ class CS2(commands.Cog):
         """Initialize database connections and start polling task."""
         try:
             await self.mysql_db.connect()
-            log.info(f"CS2 cog loaded. Last processed match ID: {self.last_processed_match_id}")
+            log.info(f"CS2 cog loaded and mysql connected.")
             
             # Start the polling task
             self.poll_matches.start()
@@ -103,24 +103,20 @@ class CS2(commands.Cog):
             processed_count = 0
             for match_data in complete_matches:
                 try:
+                    # Gather match and player data from external mysql, then insert all as transaction into postgres
                     matchid = match_data['matchid']
                     log.info(f"Processing matchid {matchid} for cs2 stats.")
-                    await self.postgres_db.insert_match(match_data)
-
-                    # Process and insert player data
                     players_data = await self.mysql_db.get_player_stats_for_match(matchid)
                     match_players = [p for p in players_data if p['team'] != "Spectator"]
                     if len(match_players) != 10:
                         log.warning(f"Not 10 players for {matchid}")
-                    for player in match_players:
-                        await self.postgres_db.insert_player_data(player)
+
+                    await self.postgres_db.process_matchzy_data_transaction(match_data, match_players)
                     
                     processed_count += 1
                     
                 except Exception as e:
                     log.error(f"Error processing match {matchid}: {e}")
-                    # important to break here so we don't continue execution and update 
-                    # last_processed_match_id and then never reprocess this
                     break 
             
             if processed_count > 0:

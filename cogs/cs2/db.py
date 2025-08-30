@@ -160,6 +160,103 @@ class CS2PostgresDb:
             player_data['cash_earned'],
             player_data['enemies_flashed']
         )
+
+    async def process_matchzy_data_transaction(
+        self, 
+        match_data: Dict[str, Any], 
+        players_data: List[Dict[str, Any]]
+    ) -> None:
+        """
+        Insert a match and all associated player data in a single transaction
+        
+        Args:
+            match_data: Dictionary containing match information
+            players_data: List of dictionaries containing player statistics
+        
+        Raises:
+            Exception: If the transaction fails, all operations are rolled back
+        """
+        async with self.pool.acquire() as conn:
+            async with conn.transaction():
+                match_query = f"""
+                    INSERT INTO {self.CS2_MATCHES} (
+                        matchid, start_time, end_time, winner, mapname,
+                        team1_score, team2_score, team1_name, team2_name
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+                    ON CONFLICT (matchid) DO NOTHING
+                """
+                
+                await conn.execute(
+                    match_query,
+                    match_data['matchid'],
+                    match_data['start_time'],
+                    match_data['end_time'],
+                    match_data['winner'],
+                    match_data['mapname'],
+                    match_data['team1_score'],
+                    match_data['team2_score'],
+                    match_data['team1_name'],
+                    match_data['team2_name']
+                )
+                
+                # Prepare player data as list of tuples for executemany
+                player_values = [
+                    (
+                        player_data['matchid'],
+                        player_data['steamid64'],
+                        player_data['team'],
+                        player_data['name'],
+                        player_data['kills'],
+                        player_data['deaths'],
+                        player_data['damage'],
+                        player_data['assists'],
+                        player_data['enemy5ks'],
+                        player_data['enemy4ks'],
+                        player_data['enemy3ks'],
+                        player_data['enemy2ks'],
+                        player_data['utility_count'],
+                        player_data['utility_damage'],
+                        player_data['utility_successes'],
+                        player_data['utility_enemies'],
+                        player_data['flash_count'],
+                        player_data['flash_successes'],
+                        player_data['health_points_removed_total'],
+                        player_data['health_points_dealt_total'],
+                        player_data['shots_fired_total'],
+                        player_data['shots_on_target_total'],
+                        player_data['v1_count'],
+                        player_data['v1_wins'],
+                        player_data['v2_count'],
+                        player_data['v2_wins'],
+                        player_data['entry_count'],
+                        player_data['entry_wins'],
+                        player_data['equipment_value'],
+                        player_data['money_saved'],
+                        player_data['kill_reward'],
+                        player_data['live_time'],
+                        player_data['head_shot_kills'],
+                        player_data['cash_earned'],
+                        player_data['enemies_flashed']
+                    )
+                    for player_data in players_data
+                ]
+                
+                player_query = f"""
+                    INSERT INTO {self.CS2_PLAYER_STATS} (
+                        matchid, steamid64, team_name, name, kills, deaths, damage, assists,
+                        enemy5ks, enemy4ks, enemy3ks, enemy2ks, utility_count, utility_damage,
+                        utility_successes, utility_enemies, flash_count, flash_successes,
+                        health_points_removed_total, health_points_dealt_total, shots_fired_total,
+                        shots_on_target_total, v1_count, v1_wins, v2_count, v2_wins,
+                        entry_count, entry_wins, equipment_value, money_saved, kill_reward,
+                        live_time, head_shot_kills, cash_earned, enemies_flashed
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
+                            $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28,
+                            $29, $30, $31, $32, $33, $34, $35)
+                """
+                
+                # Batch insert all player data
+                await conn.executemany(player_query, player_values)
     
     async def get_recent_matches(self, limit: int = 10) -> List[Dict[str, Any]]:
         """Get recent matches from our database."""
