@@ -166,7 +166,8 @@ class Points(commands.Cog):
         # Add main image at bottom of embed
         cs2_graph_url = os.getenv("CS2_POINTS_GRAPH_URL")
         if cs2_graph_url:
-            full_url = f"{cs2_graph_url}/user-points?discord_id={ctx.message.author.id}"
+            timestamp = int(datetime.now(timezone.utc).timestamp())
+            full_url = f"{cs2_graph_url}/user-points?discord_id={ctx.message.author.id}&t={timestamp}"
             log.info(f"Loading points graph from: {full_url}")
             embed.set_image(url=full_url)
         
