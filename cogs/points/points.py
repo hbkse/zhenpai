@@ -27,7 +27,7 @@ class Points(commands.Cog):
             self.poll_events.cancel()
 
     @commands.command()
-    async def points(self, ctx: commands.Context):
+    async def leaderboard(self, ctx: commands.Context):
         """Gets the points leaderboard"""
 
         # Send loading embed first
@@ -37,7 +37,7 @@ class Points(commands.Cog):
             color=0xffd700,  # Gold color
             timestamp=datetime.utcnow()
         )
-        loading_embed.set_footer(text="!points !mypoints")
+        loading_embed.set_footer(text="!leaderboard !points !points @user !points table !p !mp")
         
         # Send the loading message
         message = await ctx.send(embed=loading_embed)
@@ -103,21 +103,24 @@ class Points(commands.Cog):
             except:
                 pass
         
-        embed.set_footer(text="!points !mypoints")
+        embed.set_footer(text="!leaderboard !points !points @user !points table !p !mp")
         
         await message.edit(embed=embed)
 
-    @commands.command()
-    async def mypoints(self, ctx: commands.Context, view_type: str = "graph"):
+    @commands.command(aliases=['p', 'mp'])
+    async def points(self, ctx: commands.Context, user: discord.Member = None, *, view_type: str = "graph"):
         """Displays the points history and total for this user"""
-        if view_type.lower() == "table":
-            await self.mypoints_table(ctx)
-        else:
-            await self.mypoints_graph(ctx)
+        if user is None:
+            user = ctx.author
 
-    async def mypoints_graph(self, ctx: commands.Context):
+        if view_type.lower() == "table":
+            await self.points_table(ctx, user)
+        else:
+            await self.points_graph(ctx, user)
+
+    async def points_graph(self, ctx: commands.Context, user: discord.Member):
         """Display points with graph view"""
-        total = await self.db.get_total_points_by_discord_id(ctx.message.author.id)
+        total = await self.db.get_total_points_by_discord_id(user.id)
 
         # Create embed
         embed = discord.Embed(
@@ -127,26 +130,26 @@ class Points(commands.Cog):
         
         # Add user info
         embed.set_author(
-            name=ctx.message.author.display_name,
-            icon_url=ctx.message.author.avatar.url if ctx.message.author.avatar else None
+            name=user.display_name,
+            icon_url=user.avatar.url if user.avatar else None
         )
         
         # Add main image at bottom of embed
         cs2_graph_url = os.getenv("CS2_POINTS_GRAPH_URL")
         if cs2_graph_url:
             timestamp = int(datetime.now(timezone.utc).timestamp())
-            full_url = f"{cs2_graph_url}/user-points?discord_id={ctx.message.author.id}&t={timestamp}"
+            full_url = f"{cs2_graph_url}/user-points?discord_id={user.id}&t={timestamp}"
             log.info(f"Loading points graph from: {full_url}")
             embed.set_image(url=full_url)
         
-        embed.set_footer(text="!points !mypoints !mypoints table")
+        embed.set_footer(text="!leaderboard !points !points @user !points table !p !mp")
 
         await ctx.send(embed=embed)
 
-    async def mypoints_table(self, ctx: commands.Context):
+    async def points_table(self, ctx: commands.Context, user: discord.Member):
         """Display points with table view"""
-        total = await self.db.get_total_points_by_discord_id(ctx.message.author.id)
-        history = await self.db.get_recent_points_transactions_by_discord_id(ctx.message.author.id)
+        total = await self.db.get_total_points_by_discord_id(user.id)
+        history = await self.db.get_recent_points_transactions_by_discord_id(user.id)
 
         # Create embed
         embed = discord.Embed(
@@ -156,8 +159,8 @@ class Points(commands.Cog):
         
         # Add user info
         embed.set_author(
-            name=ctx.message.author.display_name,
-            icon_url=ctx.message.author.avatar.url if ctx.message.author.avatar else None
+            name=user.display_name,
+            icon_url=user.avatar.url if user.avatar else None
         )
         
         # History section
@@ -197,7 +200,7 @@ class Points(commands.Cog):
                 inline=False
             )
         
-        embed.set_footer(text="!points !mypoints !mypoints table")
+        embed.set_footer(text="!leaderboard !points !points @user !points table !p !mp")
 
         await ctx.send(embed=embed)
 
