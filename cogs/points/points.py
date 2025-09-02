@@ -107,7 +107,7 @@ class Points(commands.Cog):
         
         await message.edit(embed=embed)
 
-    @commands.command(aliases=['p', 'mp'])
+    @commands.command(aliases=['p', 'mp', 'mypoints'])
     async def points(self, ctx: commands.Context, user: discord.Member = None, *, view_type: str = "graph"):
         """Displays the points history and total for this user"""
         if user is None:
