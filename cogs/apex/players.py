@@ -83,12 +83,14 @@ def parse_player_info(data: Dict, player_name: str) -> Dict:
     # Build status
     is_in_game = realtime_info.get("isInGame", 0) == 1
     is_online = realtime_info.get("isOnline", 0) == 1
-    lobby_state = realtime_info.get("lobbyState", "offline")
+    current_state = realtime_info.get("currentState", "offline")
 
-    if is_in_game:
-        status = "in_game"
-    elif is_online:
-        status = lobby_state if lobby_state else "online"
+    if is_online:
+        # We need to check both `current_state` and `is_in_game` because they update differently
+        if current_state == "inMatch" or is_in_game:
+            status = "in_game"
+        else:
+            status = current_state if current_state else "offline"
     else:
         status = "offline"
 
