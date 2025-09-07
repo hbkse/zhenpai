@@ -2,10 +2,8 @@ from discord.ext import commands
 import discord
 import logging
 import datetime
-import asyncio
 import config
 from bot import Zhenpai
-from typing import List, Dict, Optional
 from .apex_embed_builder import ApexEmbedBuilder
 from .players import DEFAULT_PLAYERS, fetch_player_data, parse_player_info
 
@@ -83,21 +81,17 @@ class Apex(commands.Cog):
             await ctx.send("APEX_API_KEY is not configured.")
             return
 
-        # Send loading embed first
-        loading_embed = ApexEmbedBuilder.create_loading_embed()
-
-        message = await ctx.send(embed=loading_embed)
-
-        # Create a task to update the loading message
-        loading_task = ApexEmbedBuilder.create_loading_update_task(
-            message, loading_embed
-        )
-
         players_in_game = []
         players_online = []
         players_offline = []
-        errors = []
+
         total_players = len(DEFAULT_PLAYERS)
+        processed = 0
+
+        # Send initial progress embed
+        message = await ctx.send(
+            embed=ApexEmbedBuilder.create_progress_embed(processed, total_players)
+        )
 
         try:
             for i, player_uid in enumerate(DEFAULT_PLAYERS):
@@ -131,20 +125,26 @@ class Apex(commands.Cog):
                 except Exception as e:
                     log.exception("Error processing player UID %s: %s", player_uid, e)
                     players_offline.append(player_uid)
-        except Exception as e:
-            await ApexEmbedBuilder.cancel_loading_task(loading_task)
+                finally:
+                    processed += 1
+                    # Update progress based on processed players
+                    try:
+                        await message.edit(
+                            embed=ApexEmbedBuilder.create_progress_embed(
+                                processed, total_players
+                            )
+                        )
+                    except Exception:
+                        # If message edit fails (deleted or perms), continue silently
+                        pass
+        except Exception:
             raise
 
-        # Cancel the loading task and create final embed
-        await ApexEmbedBuilder.cancel_loading_task(loading_task)
-
-        # Create and edit message with embed
+        # Create and edit message with final embed
         try:
             embed = ApexEmbedBuilder.create_playing_embed(
                 players_in_game, players_online
             )
-
             await message.edit(embed=embed)
-
         except Exception as e:
             log.exception("Error creating/sending embed: %s", e)
