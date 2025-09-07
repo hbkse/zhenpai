@@ -11,19 +11,19 @@ PLAYER_STATUS_URL = "https://api.mozambiquehe.re/bridge?version=5&platform=PC&ui
 DEFAULT_PLAYERS = [
     "2411561527",  # Kanav
     "2264348150",  # Zaporteza
-    "1006917456785", # curryman
-    "1000111915477", # pp
+    "1006917456785",  # curryman
+    "1000111915477",  # pp
     "2310441224",  # B1LL
     "76561197984898546",  # firechuong
     "1007843832232",  # sam100
     "1003694528166",  # ImARailgun
     "1009818857089",  # NotHeartbreaker
-    "1009688142777", # Th3PinoyDragon
+    "1009688142777",  # Th3PinoyDragon
     "2411660248",  # Real_Life_Decoy
     "1011551048572",  # genzbossandamini
     "1013320161195",  # ratgodx,
-    "1011048414851", # ugly
-    "2348641801", # AqukinnMaster
+    "1011048414851",  # ugly
+    "2348641801",  # AqukinnMaster
 ]
 
 
@@ -43,7 +43,9 @@ async def fetch_player_data(
                 return {"error": "rate_limited", "message": "API rate limit exceeded"}
             elif resp.status != 200:
                 log.warning(
-                    "HTTP error for player UID %s (status %s)", player_uid, resp.status
+                    "HTTP error for player UID %s (status %s)",
+                    player_uid,
+                    resp.status,
                 )
                 return {"error": "http_error", "message": f"HTTP {resp.status}"}
 
@@ -86,7 +88,8 @@ def parse_player_info(data: Dict, player_name: str) -> Dict:
     current_state = realtime_info.get("currentState", "offline")
 
     if is_online:
-        # We need to check both `current_state` and `is_in_game` because they update differently
+        # We need to check both `current_state` and `is_in_game`
+        # because they update differently
         if current_state == "inMatch" or is_in_game:
             status = "in_game"
         else:

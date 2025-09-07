@@ -1,62 +1,54 @@
 import discord
 import datetime
-import asyncio
-from typing import List, Dict, Tuple, Callable
+import colorsys
+from typing import List, Dict
 
 
 class ApexEmbedBuilder:
-
-    # Loading message states
-    LOADING_MESSAGES = [
-        "checking to see who's playing...",
-        "this is taking a while..",
-        "dude..",
-        "seriously? is this even working?",
-    ]
+    PROGRESS_BAR_WIDTH = 20
 
     @staticmethod
-    def create_loading_embed() -> discord.Embed:
+    def create_progress_embed(processed: int, total: int) -> discord.Embed:
+        """Real progress based on processed players, with nicer visuals."""
+        total = max(total, 1)
+        pct = max(0.0, min(processed / total, 1.0))
+
+        description = ApexEmbedBuilder._create_progress_text(processed, total, pct)
         embed = discord.Embed(
             title="Lobbies?",
-            description=ApexEmbedBuilder.LOADING_MESSAGES[0],
-            color=0x00FF00,  # Green color
-            timestamp=datetime.datetime.utcnow(),
+            description=description,
+            color=ApexEmbedBuilder._progress_color(pct),
+            timestamp=datetime.datetime.now(datetime.timezone.utc),
         )
         embed.set_footer(text="!playing")
         return embed
 
     @staticmethod
-    def create_loading_update_task(
-        message: discord.Message, loading_embed: discord.Embed
-    ) -> asyncio.Task:
-        """Create a background task that updates the loading message every 3 seconds"""
+    def _create_progress_text(processed: int, total: int, pct: float) -> str:
+        """Create a loading bar with progression."""
+        filled = int(round(pct * ApexEmbedBuilder.PROGRESS_BAR_WIDTH))
+        empty = ApexEmbedBuilder.PROGRESS_BAR_WIDTH - filled
 
-        async def update_loading_message():
-            message_index = 0
-            while True:
-                await asyncio.sleep(3)
-                message_index = min(
-                    message_index + 1, len(ApexEmbedBuilder.LOADING_MESSAGES) - 1
-                )
-                new_embed = loading_embed.copy()
-                new_embed.description = ApexEmbedBuilder.LOADING_MESSAGES[message_index]
-                try:
-                    await message.edit(embed=new_embed)
-                except Exception:
-                    # Message was already edited or deleted
-                    break
+        bar = "▰" * filled + "▱" * empty
 
-        return asyncio.create_task(update_loading_message())
+        percent_text = f"{int(pct * 100):>3d}%"
+        counts_text = f"{processed}/{total}"
+
+        return (
+            f"Fetching player data...\n"
+            f"```[{bar}]  {percent_text}  ({counts_text})```"
+        )
 
     @staticmethod
-    async def cancel_loading_task(task: asyncio.Task) -> None:
-        """Cancel the loading task and wait for it to finish"""
-        if task and not task.done():
-            task.cancel()
-            try:
-                await task
-            except asyncio.CancelledError:
-                pass
+    def _progress_color(pct: float) -> int:
+        """
+        Smooth gradient from red -> yellow -> green as progress increases.
+        Uses HSV hue from 0.0 (red) to ~0.33 (green).
+        """
+        hue = 0.33 * pct  # 0 = red, 0.33 = green
+        r, g, b = colorsys.hsv_to_rgb(hue, 0.85, 1.0)
+        r_i, g_i, b_i = int(r * 255), int(g * 255), int(b * 255)
+        return (r_i << 16) | (g_i << 8) | b_i
 
     @staticmethod
     def create_playing_embed(
@@ -66,7 +58,9 @@ class ApexEmbedBuilder:
 
         if active_players == 0:
             embed = discord.Embed(
-                title="Lobbies?", description="nobody's on", color=0x777777
+                title="Lobbies?",
+                description="nobody's on",
+                color=0x777777,
             )
         else:
             embed = discord.Embed(
@@ -75,36 +69,29 @@ class ApexEmbedBuilder:
             )
 
             if players_in_game:
-                in_game_text = ""
-                for player in players_in_game:
-                    in_game_text += (
-                        f"**{player['playerName']}** - {player['legend']} • "
-                        f"{player['rankLabel']} ({player['rankScore']} RP)\n"
+                in_game_lines = []
+                for p in players_in_game:
+                    in_game_lines.append(
+                        f"• **{p['playerName']}** — {p['legend']} • {p['rankLabel']} ({p['rankScore']} RP)"
                     )
-
                 embed.add_field(
                     name=f"In Game ({len(players_in_game)})",
-                    value=in_game_text,
+                    value="\n".join(in_game_lines)[:1024] or "—",
                     inline=False,
                 )
 
-            # Add players online but not in game (like in lobby)
             if players_online:
-                online_text = ""
-                for player in players_online:
-                    online_text += (
-                        f"**{player['playerName']}** - "
-                        f"{player['legend']} • {player['rankLabel']}\n"
+                online_lines = []
+                for p in players_online:
+                    online_lines.append(
+                        f"• **{p['playerName']}** — {p['legend']} • {p['rankLabel']}"
                     )
-
                 embed.add_field(
-                    name=f"In Lobby ({len(players_online)})",
-                    value=online_text,
+                    name=f"🛋️ In Lobby ({len(players_online)})",
+                    value="\n".join(online_lines)[:1024] or "—",
                     inline=False,
                 )
 
         embed.timestamp = datetime.datetime.now(datetime.timezone.utc)
-
         embed.set_footer(text=f"Active players: {active_players}")
-
         return embed
