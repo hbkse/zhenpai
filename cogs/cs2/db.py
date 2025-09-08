@@ -262,7 +262,7 @@ class CS2PostgresDb:
         """Get recent matches from our database."""
         query = f"""
             SELECT * FROM {self.CS2_MATCHES}  
-            ORDER BY created_at DESC 
+            ORDER BY start_time DESC 
             LIMIT $1
         """
         rows = await self.pool.fetch(query, limit)

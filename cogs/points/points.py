@@ -274,6 +274,95 @@ class Points(commands.Cog):
             log.error(f"Error in rewardpoints command: {e}")
             await ctx.send("❌ An error occurred while processing the points reward. Please try again.")
 
+    @commands.command(aliases=['give'])
+    async def givepoints(self, ctx: commands.Context, user: discord.Member, amount: int):
+        """Give some of your points to another user
+        
+        Usage: !givepoints @user 100
+               !give @user 50
+        """
+        try:
+            # Validate inputs
+            if amount <= 0:
+                await ctx.send("❌ Amount must be positive.")
+                return
+            
+            if amount > 100000:  # Sanity check to prevent extreme values
+                await ctx.send("❌ Amount must be 100,000 points or less.")
+                return
+            
+            if user.id == ctx.author.id:
+                await ctx.send("❌ You can't give points to yourself.")
+                return
+            
+            # Check if sender has enough points
+            sender_balance = await self.db.get_total_points_by_discord_id(ctx.author.id)
+            if sender_balance < amount:
+                await ctx.send(f"❌ Insufficient points. You have {sender_balance:,} points, but need {amount:,}.")
+                return
+            
+            # Perform the transfer
+            await self.db.transfer_points(
+                ctx.author.id, 
+                user.id, 
+                amount, 
+                ctx.author.display_name, 
+                user.display_name
+            )
+            
+            # Get updated balances
+            sender_new_balance = await self.db.get_total_points_by_discord_id(ctx.author.id)
+            receiver_new_balance = await self.db.get_total_points_by_discord_id(user.id)
+            
+            # Create confirmation embed
+            embed = discord.Embed(
+                title="💸 Points Transfer Complete",
+                description=f"**{amount:,}** points transferred from {ctx.author.display_name} to {user.display_name}",
+                color=0x00ff00,
+                timestamp=datetime.utcnow()
+            )
+            
+            embed.add_field(
+                name="📤 From",
+                value=f"{ctx.author.mention}\nNew balance: {sender_new_balance:,}",
+                inline=True
+            )
+            
+            embed.add_field(
+                name="📥 To", 
+                value=f"{user.mention}\nNew balance: {receiver_new_balance:,}",
+                inline=True
+            )
+            
+            embed.add_field(
+                name="💰 Amount",
+                value=f"{amount:,} points",
+                inline=True
+            )
+            
+            embed.set_thumbnail(url=ctx.author.avatar.url if ctx.author.avatar else None)
+            embed.set_footer(text="!givepoints @user <amount> or !give @user <amount>")
+            
+            await ctx.send(embed=embed)
+            log.info(f"User {ctx.author.id} transferred {amount} points to user {user.id}")
+            
+        except Exception as e:
+            log.error(f"Error in givepoints command: {e}")
+            await ctx.send("❌ An error occurred while processing the points transfer. Please try again.")
+
+    @givepoints.error
+    async def givepoints_error(self, ctx: commands.Context, error):
+        """Handle errors for the givepoints command"""
+        if isinstance(error, commands.UserNotFound):
+            await ctx.send("❌ User not found. Please mention a valid user.")
+        elif isinstance(error, commands.BadArgument):
+            await ctx.send("❌ Invalid arguments. Usage: `!givepoints @user <amount>`")
+        elif isinstance(error, commands.MissingRequiredArgument):
+            await ctx.send("❌ Missing required arguments. Usage: `!givepoints @user <amount>`")
+        else:
+            log.error(f"Unexpected error in givepoints command: {error}")
+            await ctx.send("❌ An unexpected error occurred.")
+
     @rewardpoints.error
     async def rewardpoints_error(self, ctx: commands.Context, error):
         """Handle errors for the rewardpoints command"""

@@ -69,6 +69,29 @@ class PointsDb:
         """
         await self.pool.execute(query, discord_id, change_value, "Admin Reward", reason, None, None)
 
+    async def transfer_points(self, from_discord_id: int, to_discord_id: int, amount: int, from_user_name: str, to_user_name: str):
+        """
+        Transfer points from one user to another in a single transaction
+        """
+        async with self.pool.acquire() as conn:
+            async with conn.transaction():
+                # Deduct points from sender
+                await conn.execute(
+                    """
+                    INSERT INTO points (discord_id, change_value, created_at, category, reason, event_source, event_source_id)
+                    VALUES ($1, $2, NOW(), $3, $4, $5, $6)
+                    """,
+                    from_discord_id, -amount, "Transfer", f"Transfer to {to_user_name}", None, None
+                )
+                # Add points to receiver
+                await conn.execute(
+                    """
+                    INSERT INTO points (discord_id, change_value, created_at, category, reason, event_source, event_source_id)
+                    VALUES ($1, $2, NOW(), $3, $4, $5, $6)
+                    """,
+                    to_discord_id, amount, "Transfer", f"Transfer from {from_user_name}", None, None
+                )
+
     async def perform_cs2_event_transaction(self, rows: List[Tuple[Any, ...]], matchid: int):
         """inserts all point records and updates processed_events table in a single transaction"""
         async with self.pool.acquire() as conn:
