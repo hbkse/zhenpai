@@ -38,6 +38,13 @@ class CS2(commands.Cog):
     async def cog_unload(self):
         """Clean up database connections and stop polling task."""
         self.poll_matches.cancel()
+        
+        # Cancel all live tracking tasks
+        for task_id, task in self.live_tracking_tasks.items():
+            task.cancel()
+        self.live_tracking_tasks.clear()
+        self.live_messages.clear()
+        
         await self.mysql_db.close()
         log.info("CS2 cog unloaded")
 
@@ -140,36 +147,45 @@ class CS2(commands.Cog):
             if tracking_id in self.live_messages:
                 del self.live_messages[tracking_id]
     
-    async def poll_match_scores(self, tracking_id: str, match_id: int, image_url: str):
-        """Poll match scores and update the Discord embed until match reaches terminal state."""
+    async def poll_match_scores(self, tracking_id: str, initial_match_id: int, image_url: str):
+        """Poll match scores and update the Discord embed. Handles premature match endings by switching to newer matches."""
         try:
-            log.info(f"Starting score polling for match {match_id}")
+            log.info(f"Starting score polling for match {initial_match_id}")
             message = self.live_messages.get(tracking_id)
             if not message:
                 log.error(f"No message found for tracking ID {tracking_id}")
                 return
             
+            current_match_id = initial_match_id
             last_team1_score = 0
             last_team2_score = 0
             
             while tracking_id in self.live_messages:
                 await asyncio.sleep(5)
-                log.info(f"polling for match score updates for {match_id}")
+                log.info(f"polling for match score updates for {current_match_id}")
+
+                # Check if there's a newer match that started
+                latest_match_id = await self.mysql_db.get_latest_match_id()
+                if latest_match_id > current_match_id:
+                    log.info(f"Newer match detected: {latest_match_id}, switching from {current_match_id}")
+                    current_match_id = latest_match_id
+                    last_team1_score = 0  # Reset score tracking for new match
+                    last_team2_score = 0
 
                 # the score data is in map_data, but need match_data for better detection of if the match is complete
-                match_data = await self.mysql_db.get_match_by_id(match_id)
-                map_data = await self.mysql_db.get_map_stats_for_match(match_id)
+                match_data = await self.mysql_db.get_match_by_id(current_match_id)
+                map_data = await self.mysql_db.get_map_stats_for_match(current_match_id)
                 if not match_data:
-                    log.warning(f"No match data found for match ID {match_id}")
+                    log.warning(f"No match data found for match ID {current_match_id}")
                     log.warning(f"map data: {map_data}")
                     continue
                 
-                team1_score = map_data.get('team1_score', 0)
-                team2_score = map_data.get('team2_score', 0)
+                team1_score = map_data.get('team1_score', 0) if map_data else 0
+                team2_score = map_data.get('team2_score', 0) if map_data else 0
                 
                 # Check if match is complete
-                if self._check_if_complete_match(map_data, match_data):
-                    log.info(f"Match {match_id} completed")
+                if map_data and self._check_if_complete_match(map_data, match_data):
+                    log.info(f"Match {current_match_id} completed")
                     
                     # Final update with completed status
                     embed = discord.Embed(title="✅ Match Completed", color=discord.Color.green())
@@ -194,17 +210,18 @@ class CS2(commands.Cog):
                     if image_url:
                         embed.set_image(url=image_url)
 
-                    embed.add_field(name="🗺️ Map", value=map_data.get('mapname', 'Unknown'), inline=True)
+                    embed.add_field(name="🗺️ Map", value=map_data.get('mapname', 'Unknown') if map_data else 'Unknown', inline=True)
                     embed.add_field(name="⚡ Score", value=f"{team1_score} - {team2_score}", inline=True)
+                    embed.add_field(name="🔢 Match ID", value=str(current_match_id), inline=True)
                     
                     await message.edit(embed=embed)
-                    log.info(f"Updated scores for {match_id}: {team1_score}-{team2_score}")
+                    log.info(f"Updated scores for match {current_match_id}: {team1_score}-{team2_score}")
                     
                     last_team1_score = team1_score
                     last_team2_score = team2_score
                     
         except Exception as e:
-            log.error(f"Error in score polling for match {match_id}: {e}")
+            log.error(f"Error in score polling for match {current_match_id}: {e}")
         finally:
             # Cleanup
             if tracking_id in self.live_tracking_tasks:
