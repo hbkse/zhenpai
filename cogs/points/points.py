@@ -378,7 +378,7 @@ class Points(commands.Cog):
             log.error(f"Unexpected error in rewardpoints command: {error}")
             await ctx.send("❌ An unexpected error occurred.")
 
-    @tasks.loop(minutes=1)
+    @tasks.loop(seconds=15)
     async def poll_events(self):
         try:
             # Add different point sources here

@@ -1,11 +1,14 @@
 import asyncio
+from aiohttp import web
 from datetime import datetime
+from config import LIVE_MATCH_CHANNEL_ID, GUELO_TEAMS_JSON_URL
 import logging
 import discord
 from discord.ext import commands, tasks
 from typing import List, Dict, Any, Optional, Tuple
 from bot import Zhenpai
 from .db import CS2MySQLDb, CS2PostgresDb
+from .live_view import LiveView, TestView
 
 log: logging.Logger = logging.getLogger(__name__)
 
@@ -17,6 +20,7 @@ class CS2(commands.Cog):
         self.mysql_db = CS2MySQLDb()
         self.postgres_db = CS2PostgresDb(bot.db_pool)
         self.last_processed_match_id = 0
+        self.internal_port = 8081
 
     async def cog_load(self):
         """Initialize database connections and start polling task."""
@@ -35,6 +39,67 @@ class CS2(commands.Cog):
         await self.mysql_db.close()
         log.info("CS2 cog unloaded")
 
+    async def start_live_tracking(self, request):
+        try:
+            # Parse image URL from request
+            request_data = {}
+            if request.content_type == 'application/json':
+                request_data = await request.json()
+            image_url = request_data.get('image_url')
+            
+            channel = self.bot.get_channel(LIVE_MATCH_CHANNEL_ID)
+            if channel:
+                # await channel.send("start_live_tracking entry")
+                
+                # Create embed with image as the center piece
+                embed = discord.Embed(title="Inhouse starting soon!", color=discord.Color.yellow())
+                
+                if image_url:
+                    embed.set_image(url=image_url)
+                else:
+                    log.warning("didn't get image_url")
+
+                async with self.bot.http_client.get(GUELO_TEAMS_JSON_URL) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+
+                        await channel.send(str(data))
+                        # Add match data to embed
+                        mapname = data['maplist'][0] or "Unknown"
+                        mapside = data['map_sides'][0] or "Unknown"
+                        embed.add_field(name="🗺️ Map", value=mapname, inline=True)
+                        embed.add_field(name="🔄 Side", value=mapside, inline=True)
+                        
+                        message = await channel.send(embed=embed)
+                    else:
+                        log.warning(f"Failed to fetch from {GUELO_TEAMS_JSON_URL} guelo teams json: {resp.status}")
+                        # If no match data available, still send embed with image
+                        message = await channel.send(embed=embed)
+
+            return web.Response(text='')
+        except Exception as e:
+            print(f"Discord action error: {e}")
+            return web.Response(text='Error', status=500)
+
+    async def start_internal_server(self):
+        """Start internal HTTP server for communication with flask server"""
+        app = web.Application()
+        app.router.add_post('/start-live-tracking', self.start_live_tracking)
+        
+        runner = web.AppRunner(app)
+        await runner.setup()
+        
+        # Internal server on different port
+        site = web.TCPSite(runner, '127.0.0.1', self.internal_port)
+        await site.start()
+        
+        log.info(f"Internal server started on http://127.0.0.1:{self.internal_port}")
+
+    @commands.Cog.listener()
+    async def on_ready(self):
+        await self.start_internal_server()
+
+# region poll_matches
     def _check_if_complete_match(self, maps_data: Dict[str, Any], match_data: Dict[str, Any]):
         """
         Sometimes matchzy doesn't mark an end_time or winner for the match so we should base it off scores.
@@ -67,7 +132,7 @@ class CS2(commands.Cog):
             "team2_name": match_data['team2_name'],
         }
 
-    @tasks.loop(minutes=1)
+    @tasks.loop(seconds=15)
     async def poll_matches(self):
         """Poll the MatchZy MySQL for new matches and replicate to PostgreSQL."""
         try:
@@ -133,4 +198,4 @@ class CS2(commands.Cog):
     @poll_matches.after_loop
     async def after_poll_matches(self):
         log.info(f"Stopping {__name__} update loop")
-
+# endregion

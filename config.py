@@ -27,6 +27,10 @@ MYSQL_USER = os.environ.get('MYSQL_USER')
 MYSQL_PASSWORD = os.environ.get('MYSQL_PASSWORD')
 MYSQL_DATABASE = os.environ.get('MYSQL_DATABASE')
 
+# cogs.cs2
+LIVE_MATCH_CHANNEL_ID = int(os.environ.get('LIVE_MATCH_CHANNEL_ID'))
+GUELO_TEAMS_JSON_URL = os.environ.get('GUELO_TEAMS_JSON_URL')
+
 COMMIT_HASH = os.environ.get('COMMIT_HASH') or os.environ.get('RAILWAY_GIT_COMMIT_SHA') or "local"
 
 COMMAND_PREFIX = "!"

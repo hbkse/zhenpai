@@ -2,6 +2,7 @@ from flask import Flask, jsonify, request
 import logging
 import psycopg2
 from psycopg2.extras import RealDictCursor
+import requests
 
 log: logging.Logger = logging.getLogger(__name__)
 
@@ -24,6 +25,28 @@ def hello_world():
 def health_check():
     """Health check endpoint."""
     return jsonify({"status": "healthy"})
+
+@app.route('/guelo_start', methods=['POST'])
+def guelo_start():
+    try:
+        data = request.get_json() or {}
+        image_url = data.get('image_url')
+        
+        log.info(f"Received /guelo_start request with image_url: {image_url}, contacting internal server")
+        
+        payload = {}
+        if image_url:
+            payload['image_url'] = image_url
+            
+        response = requests.post(
+            'http://127.0.0.1:8081/start-live-tracking',
+            json=payload if payload else None,
+            timeout=5
+        )
+        return '', response.status_code
+    except requests.exceptions.RequestException as e:
+        log.info(f"Error contacting internal server: {e}")
+        return '', 500
 
 @app.route('/match_history')
 def get_cs2_matches():
