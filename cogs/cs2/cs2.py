@@ -101,7 +101,13 @@ class CS2(commands.Cog):
                     else:
                         log.warning(f"Failed to fetch from {GUELO_TEAMS_JSON_URL} guelo teams json: {resp.status}")
                         message = await channel.send(embed=embed)
-                
+
+                # Cancel any existing tasks, just assume there's only ever 1 live match for now
+                for task_id, task in self.live_tracking_tasks.items():
+                    task.cancel()
+                self.live_tracking_tasks.clear()
+                self.live_messages.clear()
+
                 # Start live tracking task
                 tracking_id = f"live_{datetime.now().timestamp()}"
                 self.live_messages[tracking_id] = message
