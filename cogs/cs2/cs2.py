@@ -95,17 +95,11 @@ class CS2(commands.Cog):
                     if resp.status == 200:
                         data = await resp.json()
                         
-                        # Add match data to embed
-                        mapname = data['maplist'][0] or "Unknown"
-                        mapside = data['map_sides'][0] or "Unknown"
-                        embed.add_field(name="🗺️ Map", value=mapname, inline=True)
-                        embed.add_field(name="🔄 Side", value=mapside, inline=True)
                         embed.set_footer(text="Work in progress to bet points from this embed!")
                         
                         message = await channel.send(embed=embed)
                     else:
                         log.warning(f"Failed to fetch from {GUELO_TEAMS_JSON_URL} guelo teams json: {resp.status}")
-                        # If no match data available, still send embed with image
                         message = await channel.send(embed=embed)
                 
                 # Start live tracking task
@@ -157,8 +151,8 @@ class CS2(commands.Cog):
                 return
             
             current_match_id = initial_match_id
-            last_team1_score = 0
-            last_team2_score = 0
+            last_team1_score = -1
+            last_team2_score = -1
             
             while tracking_id in self.live_messages:
                 await asyncio.sleep(5)
@@ -193,7 +187,6 @@ class CS2(commands.Cog):
                     if image_url:
                         embed.set_image(url=image_url)
 
-                    embed.add_field(name="🗺️ Map", value=map_data.get('mapname', 'Unknown'), inline=True)
                     embed.add_field(name="🏆 Final Score", value=f"{team1_score} - {team2_score}", inline=True)
                     winner = match_data.get('team1_name') if team1_score > team2_score else match_data.get('team2_name')
                     embed.add_field(name="👑 Winner", value=winner or 'Unknown', inline=True)
@@ -205,14 +198,10 @@ class CS2(commands.Cog):
 
                 # Only update if scores changed
                 if team1_score != last_team1_score or team2_score != last_team2_score:
-                    embed = discord.Embed(title="Live Match", color=discord.Color.green())
-                    
+                    embed = discord.Embed(title=f"Live Match Score: {team1_score} - {team2_score}", color=discord.Color.green())
+
                     if image_url:
                         embed.set_image(url=image_url)
-
-                    embed.add_field(name="🗺️ Map", value=map_data.get('mapname', 'Unknown') if map_data else 'Unknown', inline=True)
-                    embed.add_field(name="⚡ Score", value=f"{team1_score} - {team2_score}", inline=True)
-                    embed.add_field(name="🔢 Match ID", value=str(current_match_id), inline=True)
                     
                     await message.edit(embed=embed)
                     log.info(f"Updated scores for match {current_match_id}: {team1_score}-{team2_score}")
