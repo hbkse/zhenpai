@@ -21,6 +21,8 @@ class CS2(commands.Cog):
         self.postgres_db = CS2PostgresDb(bot.db_pool)
         self.last_processed_match_id = 0
         self.internal_port = 8081
+        self.live_tracking_tasks = {}  # Store active tracking tasks
+        self.live_messages = {}  # Store message references
 
     async def cog_load(self):
         """Initialize database connections and start polling task."""
@@ -39,48 +41,6 @@ class CS2(commands.Cog):
         await self.mysql_db.close()
         log.info("CS2 cog unloaded")
 
-    async def start_live_tracking(self, request):
-        try:
-            # Parse image URL from request
-            request_data = {}
-            if request.content_type == 'application/json':
-                request_data = await request.json()
-            image_url = request_data.get('image_url')
-            
-            channel = self.bot.get_channel(LIVE_MATCH_CHANNEL_ID)
-            if channel:
-                # await channel.send("start_live_tracking entry")
-                
-                # Create embed with image as the center piece
-                embed = discord.Embed(title="Inhouse starting soon!", color=discord.Color.yellow())
-                
-                if image_url:
-                    embed.set_image(url=image_url)
-                else:
-                    log.warning("didn't get image_url")
-
-                async with self.bot.http_client.get(GUELO_TEAMS_JSON_URL) as resp:
-                    if resp.status == 200:
-                        data = await resp.json()
-
-                        await channel.send(str(data))
-                        # Add match data to embed
-                        mapname = data['maplist'][0] or "Unknown"
-                        mapside = data['map_sides'][0] or "Unknown"
-                        embed.add_field(name="🗺️ Map", value=mapname, inline=True)
-                        embed.add_field(name="🔄 Side", value=mapside, inline=True)
-                        
-                        message = await channel.send(embed=embed)
-                    else:
-                        log.warning(f"Failed to fetch from {GUELO_TEAMS_JSON_URL} guelo teams json: {resp.status}")
-                        # If no match data available, still send embed with image
-                        message = await channel.send(embed=embed)
-
-            return web.Response(text='')
-        except Exception as e:
-            print(f"Discord action error: {e}")
-            return web.Response(text='Error', status=500)
-
     async def start_internal_server(self):
         """Start internal HTTP server for communication with flask server"""
         app = web.Application()
@@ -98,6 +58,160 @@ class CS2(commands.Cog):
     @commands.Cog.listener()
     async def on_ready(self):
         await self.start_internal_server()
+
+# region live tracking
+    async def start_live_tracking(self, request):
+        """
+        Entry point that gets hit when guelo locks in a new match start.
+        - Posts an embed to match channel.
+        - Polls for the next new matchzy match from mysql
+        - Polls and edits embed with live match score
+        """
+        try:
+            # Parse image URL from request
+            request_data = {}
+            if request.content_type == 'application/json':
+                request_data = await request.json()
+            image_url = request_data.get('image_url')
+            
+            channel = self.bot.get_channel(LIVE_MATCH_CHANNEL_ID)
+            if channel:
+                # Create embed with image as the center piece
+                embed = discord.Embed(title="Inhouse starting soon!", color=discord.Color.yellow())
+                
+                if image_url:
+                    embed.set_image(url=image_url)
+                else:
+                    log.warning("didn't get image_url")
+
+                async with self.bot.http_client.get(GUELO_TEAMS_JSON_URL) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        
+                        # Add match data to embed
+                        mapname = data['maplist'][0] or "Unknown"
+                        mapside = data['map_sides'][0] or "Unknown"
+                        embed.add_field(name="🗺️ Map", value=mapname, inline=True)
+                        embed.add_field(name="🔄 Side", value=mapside, inline=True)
+                        embed.set_footer(text="Work in progress to bet points from this embed!")
+                        
+                        message = await channel.send(embed=embed)
+                    else:
+                        log.warning(f"Failed to fetch from {GUELO_TEAMS_JSON_URL} guelo teams json: {resp.status}")
+                        # If no match data available, still send embed with image
+                        message = await channel.send(embed=embed)
+                
+                # Start live tracking task
+                tracking_id = f"live_{datetime.now().timestamp()}"
+                self.live_messages[tracking_id] = message
+                
+                task = asyncio.create_task(self.poll_live_match(tracking_id, image_url))
+                self.live_tracking_tasks[tracking_id] = task
+                log.info(f"Started live tracking task: {tracking_id}")
+
+            return web.Response(text='')
+        except Exception as e:
+            print(f"Discord action error: {e}")
+            return web.Response(text='Error', status=500)
+        
+    async def poll_live_match(self, tracking_id: str, image_url: str):
+        """Poll for new matches and start score tracking when found."""
+        try:
+            log.info(f"Starting live match polling for {tracking_id}")
+            last_match_id = await self.mysql_db.get_latest_match_id()
+            log.info(f"Current latest match ID {last_match_id}, now waiting for new match to be created")
+            
+            # Poll for new match creation
+            while tracking_id in self.live_messages:
+                await asyncio.sleep(2)
+                log.info(f"polling for new matchzy match to be created after {last_match_id}")
+
+                latest_match_id = await self.mysql_db.get_latest_match_id()
+                if latest_match_id > last_match_id:
+                    log.info(f"New match detected: {latest_match_id}")
+                    await self.poll_match_scores(tracking_id, latest_match_id, image_url)
+                    break
+                    
+        except Exception as e:
+            log.error(f"Error in live match polling {tracking_id}: {e}")
+        finally:
+            if tracking_id in self.live_tracking_tasks:
+                del self.live_tracking_tasks[tracking_id]
+            if tracking_id in self.live_messages:
+                del self.live_messages[tracking_id]
+    
+    async def poll_match_scores(self, tracking_id: str, match_id: int, image_url: str):
+        """Poll match scores and update the Discord embed until match reaches terminal state."""
+        try:
+            log.info(f"Starting score polling for match {match_id}")
+            message = self.live_messages.get(tracking_id)
+            if not message:
+                log.error(f"No message found for tracking ID {tracking_id}")
+                return
+            
+            last_team1_score = 0
+            last_team2_score = 0
+            
+            while tracking_id in self.live_messages:
+                await asyncio.sleep(5)
+                log.info(f"polling for match score updates for {match_id}")
+
+                # the score data is in map_data, but need match_data for better detection of if the match is complete
+                match_data = await self.mysql_db.get_match_by_id(match_id)
+                map_data = await self.mysql_db.get_map_stats_for_match(match_id)
+                if not match_data:
+                    log.warning(f"No match data found for match ID {match_id}")
+                    log.warning(f"map data: {map_data}")
+                    continue
+                
+                team1_score = map_data.get('team1_score', 0)
+                team2_score = map_data.get('team2_score', 0)
+                
+                # Check if match is complete
+                if self._check_if_complete_match(map_data, match_data):
+                    log.info(f"Match {match_id} completed")
+                    
+                    # Final update with completed status
+                    embed = discord.Embed(title="✅ Match Completed", color=discord.Color.green())
+                    
+                    if image_url:
+                        embed.set_image(url=image_url)
+
+                    embed.add_field(name="🗺️ Map", value=map_data.get('mapname', 'Unknown'), inline=True)
+                    embed.add_field(name="🏆 Final Score", value=f"{team1_score} - {team2_score}", inline=True)
+                    winner = match_data.get('team1_name') if team1_score > team2_score else match_data.get('team2_name')
+                    embed.add_field(name="👑 Winner", value=winner or 'Unknown', inline=True)
+                    
+                    await message.edit(embed=embed)
+
+                    # TODO: Resolve bets here
+                    break
+
+                # Only update if scores changed
+                if team1_score != last_team1_score or team2_score != last_team2_score:
+                    embed = discord.Embed(title="Live Match", color=discord.Color.green())
+                    
+                    if image_url:
+                        embed.set_image(url=image_url)
+
+                    embed.add_field(name="🗺️ Map", value=map_data.get('mapname', 'Unknown'), inline=True)
+                    embed.add_field(name="⚡ Score", value=f"{team1_score} - {team2_score}", inline=True)
+                    
+                    await message.edit(embed=embed)
+                    log.info(f"Updated scores for {match_id}: {team1_score}-{team2_score}")
+                    
+                    last_team1_score = team1_score
+                    last_team2_score = team2_score
+                    
+        except Exception as e:
+            log.error(f"Error in score polling for match {match_id}: {e}")
+        finally:
+            # Cleanup
+            if tracking_id in self.live_tracking_tasks:
+                del self.live_tracking_tasks[tracking_id]
+            if tracking_id in self.live_messages:
+                del self.live_messages[tracking_id]
+# endregion
 
 # region poll_matches
     def _check_if_complete_match(self, maps_data: Dict[str, Any], match_data: Dict[str, Any]):

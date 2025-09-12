@@ -69,6 +69,18 @@ class CS2MySQLDb:
             async with conn.cursor(aiomysql.DictCursor) as cursor:
                 await cursor.execute(query, params)
                 return await cursor.fetchall()
+    
+    async def get_latest_match_id(self) -> int:
+        """Get the latest match ID from the matches table."""
+        query = f"SELECT MAX(matchid) as latest_id FROM {self.MATCHZY_STATS_MATCHES}"
+        result = await self.execute_query(query)
+        return result[0]['latest_id'] if result and result[0]['latest_id'] else 0
+    
+    async def get_match_by_id(self, matchid: int) -> Optional[Dict[str, Any]]:
+        """Get match data by specific matchid."""
+        query = f"SELECT * FROM {self.MATCHZY_STATS_MATCHES} WHERE matchid = %s"
+        result = await self.execute_query(query, (matchid,))
+        return result[0] if result else None
 
 class CS2PostgresDb:
     """DB layer for zhenpai CS2 data"""
