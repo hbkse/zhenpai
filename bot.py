@@ -25,7 +25,8 @@ extensions = [
     'saturday',
     'cs2',
     'users',
-    'points'
+    'points',
+    'voice_logging'
 ]
 
 def setup_intents():
