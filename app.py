@@ -145,10 +145,10 @@ def get_user_points():
         
         with get_sync_db_connection() as conn:
             with conn.cursor() as cur:
-                # Get current total points (reusing PointsDb query)
+                # Get current total points from precomputed balances
                 points_query = """
-                    SELECT COALESCE(SUM(change_value), 0) as total_points
-                    FROM points
+                    SELECT COALESCE(current_balance, 0) as total_points
+                    FROM point_balances
                     WHERE discord_id = %s
                 """
                 cur.execute(points_query, (discord_id,))

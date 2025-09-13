@@ -18,15 +18,14 @@ class PointsDb:
 
     async def get_points_leaderboard(self, limit: int = 10):
         """
-        Get the top users by total points
+        Get the top users by total points from precomputed balances
         """
         query = """
         SELECT 
             discord_id,
-            SUM(change_value) as total_points
-        FROM points
-        GROUP BY discord_id
-        ORDER BY total_points DESC
+            current_balance as total_points
+        FROM point_balances
+        ORDER BY current_balance DESC
         LIMIT $1
         """
         return await self.pool.fetch(query, limit)
@@ -50,54 +49,107 @@ class PointsDb:
 
     async def get_total_points_by_discord_id(self, id: int):
         """
-        Get current total points for a discord user
+        Get current total points for a discord user from precomputed balances
         """
         query = """
-        SELECT COALESCE(SUM(change_value), 0) as total_points
-        FROM points
+        SELECT COALESCE(current_balance, 0) as total_points
+        FROM point_balances
         WHERE discord_id = $1
         """
-        return await self.pool.fetchval(query, id)
+        result = await self.pool.fetchval(query, id)
+        return result if result is not None else 0
+
+    async def update_point_balance(self, discord_id: int, change_value: int, transaction_id: int):
+        """
+        Update the precomputed balance for a user
+        """
+        query = """
+        INSERT INTO point_balances (discord_id, current_balance, last_updated, last_transaction_id)
+        VALUES ($1, $2, NOW(), $3)
+        ON CONFLICT (discord_id) 
+        DO UPDATE SET 
+            current_balance = point_balances.current_balance + $2,
+            last_updated = NOW(),
+            last_transaction_id = $3
+        """
+        await self.pool.execute(query, discord_id, change_value, transaction_id)
 
     async def add_points_reward(self, discord_id: int, change_value: int, reason: str):
         """
-        Add a manual points reward for a user
+        Add a manual points reward for a user and update balance
         """
-        query = """
-        INSERT INTO points (discord_id, change_value, created_at, category, reason, event_source, event_source_id)
-        VALUES ($1, $2, NOW(), $3, $4, $5, $6)
-        """
-        await self.pool.execute(query, discord_id, change_value, "Admin Reward", reason, None, None)
+        async with self.pool.acquire() as conn:
+            async with conn.transaction():
+                # Insert the points transaction (append-only ledger)
+                transaction_id = await conn.fetchval("""
+                INSERT INTO points (discord_id, change_value, created_at, category, reason, event_source, event_source_id)
+                VALUES ($1, $2, NOW(), $3, $4, $5, $6)
+                RETURNING id
+                """, discord_id, change_value, "Admin Reward", reason, None, None)
+                
+                # Update the precomputed balance (separate operation)
+                await conn.execute("""
+                INSERT INTO point_balances (discord_id, current_balance, last_updated, last_transaction_id)
+                VALUES ($1, $2, NOW(), $3)
+                ON CONFLICT (discord_id) 
+                DO UPDATE SET 
+                    current_balance = point_balances.current_balance + $2,
+                    last_updated = NOW(),
+                    last_transaction_id = $3
+                """, discord_id, change_value, transaction_id)
 
     async def transfer_points(self, from_discord_id: int, to_discord_id: int, amount: int, from_user_name: str, to_user_name: str):
         """
-        Transfer points from one user to another in a single transaction
+        Transfer points from one user to another and update balances
         """
         async with self.pool.acquire() as conn:
             async with conn.transaction():
-                # Deduct points from sender
-                await conn.execute(
-                    """
+                # Deduct points from sender (append-only ledger)
+                sender_transaction_id = await conn.fetchval("""
                     INSERT INTO points (discord_id, change_value, created_at, category, reason, event_source, event_source_id)
                     VALUES ($1, $2, NOW(), $3, $4, $5, $6)
+                    RETURNING id
                     """,
                     from_discord_id, -amount, "Transfer", f"Transfer to {to_user_name}", None, None
                 )
-                # Add points to receiver
-                await conn.execute(
-                    """
+                
+                # Add points to receiver (append-only ledger)
+                receiver_transaction_id = await conn.fetchval("""
                     INSERT INTO points (discord_id, change_value, created_at, category, reason, event_source, event_source_id)
                     VALUES ($1, $2, NOW(), $3, $4, $5, $6)
+                    RETURNING id
                     """,
                     to_discord_id, amount, "Transfer", f"Transfer from {from_user_name}", None, None
                 )
+                
+                # Update sender balance (separate operation)
+                await conn.execute("""
+                    INSERT INTO point_balances (discord_id, current_balance, last_updated, last_transaction_id)
+                    VALUES ($1, $2, NOW(), $3)
+                    ON CONFLICT (discord_id) 
+                    DO UPDATE SET 
+                        current_balance = point_balances.current_balance + $2,
+                        last_updated = NOW(),
+                        last_transaction_id = $3
+                    """, from_discord_id, -amount, sender_transaction_id)
+                
+                # Update receiver balance (separate operation)
+                await conn.execute("""
+                    INSERT INTO point_balances (discord_id, current_balance, last_updated, last_transaction_id)
+                    VALUES ($1, $2, NOW(), $3)
+                    ON CONFLICT (discord_id) 
+                    DO UPDATE SET 
+                        current_balance = point_balances.current_balance + $2,
+                        last_updated = NOW(),
+                        last_transaction_id = $3
+                    """, to_discord_id, amount, receiver_transaction_id)
 
     async def perform_cs2_event_transaction(self, rows: List[Tuple[Any, ...]], matchid: int):
-        """inserts all point records and updates processed_events table in a single transaction"""
+        """inserts all point records, updates point_balances, and updates processed_events table in a single transaction"""
         async with self.pool.acquire() as conn:
             async with conn.transaction():
                 try:
-                    # Insert point records in batch
+                    # Insert point records in batch (append-only ledger)
                     if rows:
                         await conn.executemany(
                             """
@@ -106,6 +158,26 @@ class PointsDb:
                             """,
                             rows
                         )
+                        
+                        # Update point_balances for each affected user
+                        # Group by discord_id to aggregate changes
+                        balance_updates = {}
+                        for row in rows:
+                            discord_id, change_value = row[0], row[1]
+                            balance_updates[discord_id] = balance_updates.get(discord_id, 0) + change_value
+                        
+                        # Update balances (using last transaction approach - you may want to adjust this)
+                        for discord_id, total_change in balance_updates.items():
+                            await conn.execute("""
+                                INSERT INTO point_balances (discord_id, current_balance, last_updated, last_transaction_id)
+                                VALUES ($1, $2, NOW(), (SELECT MAX(id) FROM points WHERE discord_id = $1))
+                                ON CONFLICT (discord_id) 
+                                DO UPDATE SET 
+                                    current_balance = point_balances.current_balance + $2,
+                                    last_updated = NOW(),
+                                    last_transaction_id = (SELECT MAX(id) FROM points WHERE discord_id = $1)
+                                """, discord_id, total_change)
+                    
                     # Update processed_events table to mark as processed
                     if matchid:
                         await conn.execute(
