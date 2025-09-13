@@ -27,6 +27,9 @@ MYSQL_USER = os.environ.get('MYSQL_USER')
 MYSQL_PASSWORD = os.environ.get('MYSQL_PASSWORD')
 MYSQL_DATABASE = os.environ.get('MYSQL_DATABASE')
 
+# cogs.points
+CS2_POINTS_GRAPH_URL = os.environ.get('CS2_POINTS_GRAPH_URL')
+
 # cogs.cs2
 LIVE_MATCH_CHANNEL_ID = int(os.environ.get('LIVE_MATCH_CHANNEL_ID'))
 GUELO_TEAMS_JSON_URL = os.environ.get('GUELO_TEAMS_JSON_URL')

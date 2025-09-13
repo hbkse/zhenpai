@@ -1,6 +1,8 @@
 from datetime import datetime, timezone
 import discord
 from discord.ext import commands, tasks
+from discord import app_commands
+from config import CS2_POINTS_GRAPH_URL
 import logging
 import os
 
@@ -12,6 +14,8 @@ log: logging.Logger = logging.getLogger(__name__)
 
 class Points(commands.Cog):
     """Commands for managing and betting points"""
+
+    FOOTER_MESSAGE = "!p | !p @user | !leaderboard | Try /points |"
 
     def __init__(self, bot: Zhenpai):
         self.bot = bot
@@ -102,9 +106,9 @@ class Points(commands.Cog):
                     embed.set_thumbnail(url=top_user.avatar.url)
             except:
                 pass
-        
-        embed.set_footer(text="!leaderboard !points !points @user !points table !p !mp")
-        
+
+        embed.set_footer(text=self.FOOTER_MESSAGE)
+
         await message.edit(embed=embed)
 
     @commands.command(aliases=['p', 'mp', 'mypoints'])
@@ -135,16 +139,52 @@ class Points(commands.Cog):
         )
         
         # Add main image at bottom of embed
-        cs2_graph_url = os.getenv("CS2_POINTS_GRAPH_URL")
-        if cs2_graph_url:
+        if CS2_POINTS_GRAPH_URL:
             timestamp = int(datetime.now(timezone.utc).timestamp())
-            full_url = f"{cs2_graph_url}/user-points?discord_id={user.id}&t={timestamp}"
+            full_url = f"{CS2_POINTS_GRAPH_URL}/user-points?discord_id={user.id}&t={timestamp}"
             log.info(f"Loading points graph from: {full_url}")
             embed.set_image(url=full_url)
-        
-        embed.set_footer(text="!leaderboard !points !points @user !points table !p !mp")
+
+        embed.set_footer(text=self.FOOTER_MESSAGE)
 
         await ctx.send(embed=embed)
+
+    @app_commands.command(name="points", description="View your points balance and history")
+    @app_commands.describe(
+        user="The user to check points for (defaults to yourself)",
+        view_type="Display type: 'graph' (default) or 'table'"
+    )
+    @app_commands.choices(view_type=[
+        app_commands.Choice(name="Graph", value="graph"),
+        app_commands.Choice(name="Table", value="table")
+    ])
+    async def points_slash(self, interaction: discord.Interaction, user: discord.Member = None, view_type: str = "graph"):
+        """Slash command version of !points with ephemeral response"""
+        if user is None:
+            user = interaction.user
+        
+        # Create a mock context object for reusing existing methods
+        class MockContext:
+            def __init__(self, interaction):
+                self.author = interaction.user
+                self.guild = interaction.guild
+                self.channel = interaction.channel
+                self._interaction = interaction
+                self._responded = False
+            
+            async def send(self, **kwargs):
+                if not self._responded:
+                    await self._interaction.response.send_message(ephemeral=True, **kwargs)
+                    self._responded = True
+                else:
+                    await self._interaction.followup.send(ephemeral=True, **kwargs)
+        
+        mock_ctx = MockContext(interaction)
+        
+        if view_type.lower() == "table":
+            await self.points_table(mock_ctx, user)
+        else:
+            await self.points_graph(mock_ctx, user)
 
     async def points_table(self, ctx: commands.Context, user: discord.Member):
         """Display points with table view"""
@@ -199,8 +239,8 @@ class Points(commands.Cog):
                 value="No points history found.",
                 inline=False
             )
-        
-        embed.set_footer(text="!leaderboard !points !points @user !points table !p !mp")
+
+        embed.set_footer(text=self.FOOTER_MESSAGE)
 
         await ctx.send(embed=embed)
 
