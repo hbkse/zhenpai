@@ -1,11 +1,42 @@
 import discord
 import datetime
 import colorsys
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 
 class ApexEmbedBuilder:
     PROGRESS_BAR_WIDTH = 20
+
+    # RP required for each rank in ascending order.
+    # Last entry (16000) is Master
+    RP_THRESHOLDS_ASC: List[int] = [
+        0,
+        250,
+        500,
+        750,
+        1000,
+        1500,
+        2000,
+        2500,
+        3000,
+        3500,
+        4000,
+        4500,
+        5250,
+        6000,
+        6750,
+        7500,
+        8250,
+        9000,
+        10000,
+        11000,
+        12000,
+        13000,
+        14000,
+        15000,
+        16000,
+    ]
+    APEX_PREDATOR_NOTE = "Top 750 only"
 
     @staticmethod
     def create_progress_embed(processed: int, total: int) -> discord.Embed:
@@ -51,6 +82,25 @@ class ApexEmbedBuilder:
         return (r_i << 16) | (g_i << 8) | b_i
 
     @staticmethod
+    def rp_to_next_rank(rank_score: int) -> Optional[int]:
+        """
+        Return RP needed to reach the next rank threshold.
+        If None: player is at/above Master (next is Predator, top-750 only).
+        """
+        for t in ApexEmbedBuilder.RP_THRESHOLDS_ASC:
+            if rank_score < t:
+                return t - rank_score
+        return None
+
+    @staticmethod
+    def format_rank_progress(rank_score: int) -> str:
+        """Human-friendly text for progress toward next rank."""
+        rp_to_next = ApexEmbedBuilder.rp_to_next_rank(rank_score)
+        if rp_to_next is None:
+            return ApexEmbedBuilder.APEX_PREDATOR_NOTE
+        return f"{rp_to_next} RP to next rank"
+
+    @staticmethod
     def create_playing_embed(
         players_in_game: List[Dict], players_online: List[Dict]
     ) -> discord.Embed:
@@ -71,8 +121,11 @@ class ApexEmbedBuilder:
             if players_in_game:
                 in_game_lines = []
                 for p in players_in_game:
+                    score = int(p.get("rankScore", 0))
+                    progress = ApexEmbedBuilder.format_rank_progress(score)
                     in_game_lines.append(
-                        f"• **{p['playerName']}** — {p['legend']} • {p['rankLabel']} ({p['rankScore']} RP)"
+                        f"• **{p['playerName']}** — {p['legend']} • "
+                        f"{p['rankLabel']} ({progress})"
                     )
                 embed.add_field(
                     name=f"In Game ({len(players_in_game)})",
@@ -83,8 +136,11 @@ class ApexEmbedBuilder:
             if players_online:
                 online_lines = []
                 for p in players_online:
+                    score = int(p.get("rankScore", 0))
+                    progress = ApexEmbedBuilder.format_rank_progress(score)
                     online_lines.append(
-                        f"• **{p['playerName']}** — {p['legend']} • {p['rankLabel']}"
+                        f"• **{p['playerName']}** — {p['legend']} • "
+                        f"{p['rankLabel']} ({progress})"
                     )
                 embed.add_field(
                     name=f"🛋️ In Lobby ({len(players_online)})",
