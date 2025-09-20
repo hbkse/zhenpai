@@ -5,6 +5,7 @@ from discord import app_commands
 from config import CS2_POINTS_GRAPH_URL
 import logging
 import os
+import asyncio
 
 from cogs.users.db import UsersDb
 from .db import PointsDb
@@ -314,6 +315,219 @@ class Points(commands.Cog):
             log.error(f"Error in rewardpoints command: {e}")
             await ctx.send("❌ An error occurred while processing the points reward. Please try again.")
 
+    @commands.command()
+    @commands.is_owner()
+    async def rewardbulk(self, ctx: commands.Context, *, bulk_data: str):
+        """Bulk reward points based on win/loss format (Admin only)
+
+        Expected format:
+        ```
+        win
+        79190764512350208 15000
+        111679644054351872 10000
+
+        loss
+        98560137010106368 5000
+        ```
+
+        Win entries get positive points, loss entries get negative points.
+        """
+        try:
+            # Extract content from markdown code blocks
+            bulk_data = bulk_data.strip()
+            if bulk_data.startswith('```') and bulk_data.endswith('```'):
+                # Remove the ``` markers and any language specifier
+                lines = bulk_data[3:-3].strip().split('\n')
+                # Remove language specifier if present (e.g., ```markdown)
+                if lines and not lines[0].strip():
+                    lines = lines[1:]
+                elif lines and lines[0].strip() and not any(char.isdigit() for char in lines[0]) and 'win' not in lines[0].lower() and 'loss' not in lines[0].lower():
+                    lines = lines[1:]  # Remove language specifier line
+            else:
+                lines = bulk_data.split('\n')
+
+            rewards = []
+            current_multiplier = 1
+            processed_count = 0
+            errors = []
+
+            for line_num, line in enumerate(lines, 1):
+                line = line.strip()
+                if not line:
+                    continue
+
+                # Check for win/loss indicators
+                if line.lower() == 'win':
+                    current_multiplier = 1
+                    continue
+                elif line.lower() == 'loss':
+                    current_multiplier = -1
+                    continue
+
+                # Parse user ID and points
+                parts = line.split()
+                if len(parts) != 2:
+                    errors.append(f"Line {line_num}: Invalid format - expected 'user_id points'")
+                    continue
+
+                try:
+                    user_id = int(parts[0])
+                    base_points = int(parts[1])
+                    final_points = base_points * current_multiplier
+
+                    # Validate user exists
+                    try:
+                        user = await ctx.bot.fetch_user(user_id)
+                        rewards.append((user, final_points))
+                        processed_count += 1
+                    except discord.NotFound:
+                        errors.append(f"Line {line_num}: User {user_id} not found")
+                        continue
+
+                except ValueError:
+                    errors.append(f"Line {line_num}: Invalid numbers - '{line}'")
+                    continue
+
+            if not rewards and not errors:
+                await ctx.send("❌ No valid entries found. Please check your format.")
+                return
+
+            # Show preview and ask for confirmation
+            preview_embed = discord.Embed(
+                title="🔍 Bulk Reward Preview",
+                description=f"Found {len(rewards)} valid entries to process",
+                color=0xffa500,
+                timestamp=datetime.utcnow()
+            )
+
+            preview_text = ""
+            for user, points in rewards[:10]:  # Show first 10
+                action = "+" if points > 0 else ""
+                preview_text += f"{user.display_name}: {action}{points:,} points\n"
+
+            if len(rewards) > 10:
+                preview_text += f"... and {len(rewards) - 10} more entries"
+
+            preview_embed.add_field(
+                name="📊 Changes",
+                value=preview_text or "None",
+                inline=False
+            )
+
+            if errors:
+                error_text = "\n".join(errors[:5])
+                if len(errors) > 5:
+                    error_text += f"\n... and {len(errors) - 5} more errors"
+                preview_embed.add_field(
+                    name="⚠️ Errors",
+                    value=error_text,
+                    inline=False
+                )
+
+            preview_embed.set_footer(text="React with ✅ to confirm or ❌ to cancel")
+
+            message = await ctx.send(embed=preview_embed)
+            await message.add_reaction("✅")
+            await message.add_reaction("❌")
+
+            def check(reaction, user):
+                return (user == ctx.author and
+                       str(reaction.emoji) in ["✅", "❌"] and
+                       reaction.message.id == message.id)
+
+            try:
+                reaction, user = await ctx.bot.wait_for('reaction_add', timeout=30.0, check=check)
+
+                if str(reaction.emoji) == "❌":
+                    await ctx.send("❌ Bulk reward cancelled.")
+                    return
+
+                # Process all rewards
+                successful = 0
+                failed = 0
+                results = []
+
+                for user, points in rewards:
+                    try:
+                        reason = "Won CS2 Bet" if points > 0 else "Lost CS2 Bet"
+                        await self.db.add_points_reward(user.id, points, reason)
+
+                        # Get updated total for this user
+                        new_total = await self.db.get_total_points_by_discord_id(user.id)
+                        results.append((user, points, new_total))
+                        successful += 1
+                    except Exception as e:
+                        log.error(f"Failed to reward {points} points to user {user.id}: {e}")
+                        failed += 1
+
+                # Send final confirmation
+                result_embed = discord.Embed(
+                    title="✅ Bulk Reward Complete",
+                    description=f"Successfully processed {successful} entries",
+                    color=0x00ff00,
+                    timestamp=datetime.utcnow()
+                )
+
+                # Show detailed results
+                if results:
+                    results_text = ""
+                    for user, points, new_total in results:
+                        action = "+" if points > 0 else ""
+                        results_text += f"**{user.display_name}**: {action}{points:,} → {new_total:,} total\n"
+
+                    # Split into multiple fields if too long
+                    if len(results_text) > 1024:
+                        # Split results into chunks
+                        chunks = []
+                        current_chunk = ""
+                        for user, points, new_total in results:
+                            action = "+" if points > 0 else ""
+                            line = f"**{user.display_name}**: {action}{points:,} → {new_total:,} total\n"
+                            if len(current_chunk + line) > 1024:
+                                chunks.append(current_chunk)
+                                current_chunk = line
+                            else:
+                                current_chunk += line
+                        if current_chunk:
+                            chunks.append(current_chunk)
+
+                        for i, chunk in enumerate(chunks):
+                            field_name = "📊 Results" if i == 0 else f"📊 Results (cont. {i+1})"
+                            result_embed.add_field(
+                                name=field_name,
+                                value=chunk,
+                                inline=False
+                            )
+                    else:
+                        result_embed.add_field(
+                            name="📊 Results",
+                            value=results_text,
+                            inline=False
+                        )
+
+                if failed > 0:
+                    result_embed.add_field(
+                        name="⚠️ Failed",
+                        value=f"{failed} entries failed to process",
+                        inline=True
+                    )
+
+                result_embed.add_field(
+                    name="🛡️ Admin",
+                    value=ctx.author.mention,
+                    inline=True
+                )
+
+                await ctx.send(embed=result_embed)
+                log.info(f"Admin {ctx.author.id} completed bulk reward: {successful} successful, {failed} failed")
+
+            except asyncio.TimeoutError:
+                await ctx.send("❌ Confirmation timeout. Bulk reward cancelled.")
+
+        except Exception as e:
+            log.error(f"Error in rewardbulk command: {e}")
+            await ctx.send("❌ An error occurred while processing the bulk reward. Please try again.")
+
     @commands.command(aliases=['give'])
     async def givepoints(self, ctx: commands.Context, user: discord.Member, amount: int):
         """Give some of your points to another user
@@ -416,6 +630,19 @@ class Points(commands.Cog):
             await ctx.send("❌ Missing required arguments. Usage: `!rewardpoints @user <amount> <reason>`")
         else:
             log.error(f"Unexpected error in rewardpoints command: {error}")
+            await ctx.send("❌ An unexpected error occurred.")
+
+    @rewardbulk.error
+    async def rewardbulk_error(self, ctx: commands.Context, error):
+        """Handle errors for the rewardbulk command"""
+        if isinstance(error, commands.NotOwner):
+            await ctx.send("❌ You need to be the bot owner to use this command.")
+        elif isinstance(error, commands.MissingRequiredArgument):
+            await ctx.send("❌ Missing bulk data. Usage: `!rewardbulk <bulk_data>`\n"
+                          "Expected format:\n```\nwin\n79190764512350208 15000\n111679644054351872 10000\n\n"
+                          "loss\n98560137010106368 5000\n```")
+        else:
+            log.error(f"Unexpected error in rewardbulk command: {error}")
             await ctx.send("❌ An unexpected error occurred.")
 
     @tasks.loop(seconds=15)
