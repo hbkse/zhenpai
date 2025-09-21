@@ -1,7 +1,7 @@
 import asyncio
 from aiohttp import web
 from datetime import datetime
-from config import LIVE_MATCH_CHANNEL_ID, GUELO_TEAMS_JSON_URL
+from config import LIVE_MATCH_CHANNEL_ID, GUELO_TEAMS_JSON_URL, FLASK_APP_HOST, FLASK_APP_PROTOCOL
 import logging
 import discord
 from discord.ext import commands, tasks
@@ -325,3 +325,43 @@ class CS2(commands.Cog):
     async def after_poll_matches(self):
         log.info(f"Stopping {__name__} update loop")
 # endregion
+
+    @commands.command()
+    async def cs2demo(self, ctx: commands.Context, match_id: int = None):
+        """Get download link for CS2 demo files by match ID
+
+        Usage: !cs2demo <matchid>
+        Example: !cs2demo 12345
+        """
+        if match_id is None:
+            await ctx.send("❌ Please provide a match ID. Usage: `!cs2demo <matchid>`")
+            return
+
+        if match_id <= 0:
+            await ctx.send("❌ Match ID must be a positive integer.")
+            return
+
+        # Build the download URL
+        download_url = f"{FLASK_APP_PROTOCOL}://{FLASK_APP_HOST}/download-demo?matchid={match_id}"
+
+        embed = discord.Embed(
+            title="📁 CS2 Demo Download",
+            description=f"Click the link below to download demo files for match `{match_id}`",
+            color=0x00ff00
+        )
+
+        embed.add_field(
+            name="🔗 Download Link",
+            value=f"[Download Demo(s)]({download_url})",
+            inline=False
+        )
+
+        embed.add_field(
+            name="ℹ️ Note",
+            value="If multiple maps were played, all demos will be bundled in a ZIP file.",
+            inline=False
+        )
+
+        embed.set_footer(text=f"Match ID: {match_id}")
+
+        await ctx.send(embed=embed)

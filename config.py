@@ -34,6 +34,13 @@ CS2_POINTS_GRAPH_URL = os.environ.get('CS2_POINTS_GRAPH_URL')
 LIVE_MATCH_CHANNEL_ID = int(os.environ.get('LIVE_MATCH_CHANNEL_ID'))
 GUELO_TEAMS_JSON_URL = os.environ.get('GUELO_TEAMS_JSON_URL')
 
+# Demo storage
+CS2_DEMO_DIRECTORY = os.environ.get('CS2_DEMO_DIRECTORY', './demos')
+
+# Flask app config for external access
+FLASK_APP_HOST = os.environ.get('FLASK_APP_HOST', 'localhost:5757')
+FLASK_APP_PROTOCOL = os.environ.get('FLASK_APP_PROTOCOL', 'http')
+
 COMMIT_HASH = os.environ.get('COMMIT_HASH') or os.environ.get('RAILWAY_GIT_COMMIT_SHA') or "local"
 
 COMMAND_PREFIX = "!"

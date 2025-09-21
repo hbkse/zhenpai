@@ -1,8 +1,11 @@
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_file
 import logging
 import psycopg2
 from psycopg2.extras import RealDictCursor
 import requests
+import os
+from pathlib import Path
+from config import CS2_DEMO_DIRECTORY
 
 log: logging.Logger = logging.getLogger(__name__)
 
@@ -209,6 +212,156 @@ def get_user_points():
         
     except Exception as e:
         log.error(f"Error in user_points endpoint: {e}")
+        return jsonify({"error": "Internal server error"}), 500
+
+@app.route('/upload-demo', methods=['POST'])
+def upload_demo():
+    """Handle demo file uploads from MatchZy CS2 plugin
+
+    Expected headers:
+    - MatchZy-FileName: Name of the demo file
+    - MatchZy-MatchId: Unique ID of the match
+    - MatchZy-MapNumber: Zero-indexed map number in the series
+
+    The request body contains the zipped demo file data.
+    """
+    try:
+        # Read MatchZy headers
+        filename = request.headers.get('MatchZy-FileName')
+        match_id = request.headers.get('MatchZy-MatchId')
+        map_number = request.headers.get('MatchZy-MapNumber')
+
+        # Validate required headers
+        if not filename:
+            log.warning("Demo upload rejected: Missing MatchZy-FileName header")
+            return jsonify({"error": "Missing MatchZy-FileName header"}), 400
+        if not match_id:
+            log.warning("Demo upload rejected: Missing MatchZy-MatchId header")
+            return jsonify({"error": "Missing MatchZy-MatchId header"}), 400
+        if map_number is None:
+            log.warning("Demo upload rejected: Missing MatchZy-MapNumber header")
+            return jsonify({"error": "Missing MatchZy-MapNumber header"}), 400
+
+        # Validate filename (basic security check)
+        if not filename.endswith('.zip') or '..' in filename or '/' in filename or '\\' in filename:
+            log.warning(f"Demo upload rejected: Invalid filename: {filename}")
+            return jsonify({"error": "Invalid filename"}), 400
+
+        # Create demos directory structure
+        demos_base_dir = Path(CS2_DEMO_DIRECTORY)
+        match_dir = demos_base_dir / match_id
+        match_dir.mkdir(parents=True, exist_ok=True)
+
+        # Full path for the demo file
+        demo_file_path = match_dir / filename
+
+        # Check if file already exists
+        if demo_file_path.exists():
+            log.warning(f"Demo file already exists: {demo_file_path}")
+            return jsonify({"error": "Demo file already exists"}), 409
+
+        # Write the demo file
+        try:
+            with open(demo_file_path, 'wb') as f:
+                # Read the request body in chunks to handle large files
+                while True:
+                    chunk = request.stream.read(8192)  # 8KB chunks
+                    if not chunk:
+                        break
+                    f.write(chunk)
+
+            file_size = demo_file_path.stat().st_size
+            log.info(f"Demo uploaded successfully: {demo_file_path} ({file_size} bytes) - Match: {match_id}, Map: {map_number}")
+
+            return jsonify({
+                "status": "success",
+                "message": "Demo uploaded successfully",
+                "match_id": match_id,
+                "map_number": int(map_number),
+                "filename": filename,
+                "file_size": file_size
+            }), 200
+
+        except OSError as file_error:
+            log.error(f"Error writing demo file {demo_file_path}: {file_error}")
+            # Clean up partial file if it exists
+            if demo_file_path.exists():
+                try:
+                    demo_file_path.unlink()
+                except:
+                    pass
+            return jsonify({"error": "Error writing demo file"}), 500
+
+    except Exception as e:
+        log.error(f"Error in upload_demo endpoint: {e}")
+        return jsonify({"error": "Internal server error"}), 500
+
+@app.route('/download-demo')
+def download_demo():
+    """Download demo files for a specific match ID
+
+    Query parameters:
+    - matchid: The match ID to download demos for (required)
+
+    Returns a ZIP file containing all demo files for the match, or individual file if only one exists.
+    """
+    try:
+        match_id = request.args.get('matchid')
+
+        # Validate required parameter
+        if not match_id:
+            return jsonify({"error": "matchid parameter is required"}), 400
+
+        # Validate match_id (basic security check)
+        if '..' in match_id or '/' in match_id or '\\' in match_id:
+            log.warning(f"Demo download rejected: Invalid match_id: {match_id}")
+            return jsonify({"error": "Invalid match_id"}), 400
+
+        # Check if match directory exists
+        demos_base_dir = Path(CS2_DEMO_DIRECTORY)
+        match_dir = demos_base_dir / match_id
+
+        if not match_dir.exists() or not match_dir.is_dir():
+            log.info(f"Demo download requested for non-existent match: {match_id}")
+            return jsonify({"error": "No demos found for this match"}), 404
+
+        # Find all demo files in the match directory
+        demo_files = list(match_dir.glob("*.zip"))
+
+        if not demo_files:
+            log.info(f"Demo download requested but no .zip files found for match: {match_id}")
+            return jsonify({"error": "No demo files found for this match"}), 404
+
+        # If only one demo file, send it directly
+        if len(demo_files) == 1:
+            demo_file = demo_files[0]
+            log.info(f"Serving single demo file: {demo_file} for match: {match_id}")
+            return send_file(
+                demo_file,
+                as_attachment=True,
+                download_name=demo_file.name,
+                mimetype='application/zip'
+            )
+
+        # If multiple demo files, create a temporary ZIP containing all of them
+        import tempfile
+        import zipfile
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.zip') as temp_zip:
+            with zipfile.ZipFile(temp_zip.name, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                for demo_file in demo_files:
+                    zipf.write(demo_file, demo_file.name)
+
+            log.info(f"Serving combined ZIP with {len(demo_files)} demo files for match: {match_id}")
+            return send_file(
+                temp_zip.name,
+                as_attachment=True,
+                download_name=f"match_{match_id}_demos.zip",
+                mimetype='application/zip'
+            )
+
+    except Exception as e:
+        log.error(f"Error in download_demo endpoint: {e}")
         return jsonify({"error": "Internal server error"}), 500
 
 if __name__ == '__main__':
