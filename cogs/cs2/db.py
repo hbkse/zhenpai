@@ -336,3 +336,169 @@ class CS2PostgresDb:
         """
         rows = await self.pool.fetch(query)
         return [dict(row) for row in rows]
+
+    async def get_comprehensive_player_stats(self) -> List[Dict[str, Any]]:
+        """Get comprehensive statistics for all players, grouped by steamid64."""
+        query = f"""
+            WITH player_matches AS (
+                SELECT
+                    ps.steamid64,
+                    ps.team_name,
+                    m.winner,
+                    ps.kills,
+                    ps.deaths,
+                    ps.assists,
+                    ps.damage,
+                    m.team1_score,
+                    m.team2_score,
+                    ps.head_shot_kills,
+                    ps.v1_count,
+                    ps.v1_wins,
+                    ps.entry_count,
+                    ps.entry_wins,
+                    ps.utility_damage,
+                    ps.flash_successes,
+                    ps.flash_count,
+                    CASE
+                        WHEN ps.team_name = m.winner THEN 1
+                        ELSE 0
+                    END as is_win,
+                    (m.team1_score + m.team2_score) as total_rounds
+                FROM {self.CS2_PLAYER_STATS} ps
+                JOIN {self.CS2_MATCHES} m ON ps.matchid = m.matchid
+            ),
+            player_stats AS (
+                SELECT
+                    steamid64,
+                    COUNT(*) as matches_played,
+                    SUM(is_win) as wins,
+                    COUNT(*) - SUM(is_win) as losses,
+                    ROUND(
+                        CASE
+                            WHEN COUNT(*) > 0 THEN (SUM(is_win)::DECIMAL / COUNT(*)) * 100
+                            ELSE 0
+                        END,
+                        1
+                    ) as winrate,
+                    ROUND(SUM(kills)::DECIMAL / NULLIF(COUNT(*), 0), 1) as avg_kills,
+                    ROUND(SUM(deaths)::DECIMAL / NULLIF(COUNT(*), 0), 1) as avg_deaths,
+                    ROUND(SUM(assists)::DECIMAL / NULLIF(COUNT(*), 0), 1) as avg_assists,
+                    ROUND(
+                        CASE
+                            WHEN SUM(deaths) > 0 THEN (SUM(kills) + SUM(assists))::DECIMAL / SUM(deaths)
+                            ELSE SUM(kills) + SUM(assists)
+                        END,
+                        2
+                    ) as kda_ratio,
+                    ROUND(
+                        CASE
+                            WHEN SUM(deaths) > 0 THEN SUM(kills)::DECIMAL / SUM(deaths)
+                            ELSE SUM(kills)
+                        END,
+                        2
+                    ) as kd_ratio,
+                    ROUND(SUM(damage)::DECIMAL / NULLIF(SUM(total_rounds), 0), 1) as avg_damage_per_round,
+                    ROUND(
+                        CASE
+                            WHEN SUM(kills) > 0 THEN (SUM(head_shot_kills)::DECIMAL / SUM(kills)) * 100
+                            ELSE 0
+                        END,
+                        1
+                    ) as headshot_percentage,
+                    ROUND(
+                        CASE
+                            WHEN SUM(v1_count) > 0 THEN (SUM(v1_wins)::DECIMAL / SUM(v1_count)) * 100
+                            ELSE 0
+                        END,
+                        1
+                    ) as clutch_success_rate,
+                    ROUND(
+                        CASE
+                            WHEN SUM(entry_count) > 0 THEN (SUM(entry_wins)::DECIMAL / SUM(entry_count)) * 100
+                            ELSE 0
+                        END,
+                        1
+                    ) as entry_success_rate,
+                    ROUND(SUM(utility_damage)::DECIMAL / NULLIF(COUNT(*), 0), 1) as avg_utility_damage,
+                    ROUND(
+                        CASE
+                            WHEN SUM(flash_count) > 0 THEN (SUM(flash_successes)::DECIMAL / SUM(flash_count)) * 100
+                            ELSE 0
+                        END,
+                        1
+                    ) as flash_success_rate,
+                    SUM(kills) as total_kills,
+                    SUM(deaths) as total_deaths,
+                    SUM(assists) as total_assists,
+                    SUM(damage) as total_damage
+                FROM player_matches
+                GROUP BY steamid64
+                HAVING COUNT(*) > 0
+            )
+            SELECT
+                ps.steamid64,
+                ps.matches_played,
+                ps.wins,
+                ps.losses,
+                ps.winrate,
+                ps.avg_kills,
+                ps.avg_deaths,
+                ps.avg_assists,
+                ps.kda_ratio,
+                ps.kd_ratio,
+                ps.avg_damage_per_round,
+                ps.headshot_percentage,
+                ps.clutch_success_rate,
+                ps.entry_success_rate,
+                ps.avg_utility_damage,
+                ps.flash_success_rate,
+                ps.total_kills,
+                ps.total_deaths,
+                ps.total_assists,
+                ps.total_damage,
+                COALESCE(u.discord_username, 'Unknown Player') as display_name,
+                u.discord_id
+            FROM player_stats ps
+            LEFT JOIN users u ON ps.steamid64 = u.steamid64
+            ORDER BY ps.avg_damage_per_round DESC, ps.kda_ratio DESC
+        """
+        rows = await self.pool.fetch(query)
+        return [dict(row) for row in rows]
+
+    async def calculate_team_odds(self, team1_steamids: List[int], team2_steamids: List[int]) -> Dict[str, Any]:
+        """Calculate match odds based on team ADR sums.
+
+        Args:
+            team1_steamids: List of steamid64s for team 1
+            team2_steamids: List of steamid64s for team 2
+
+        Returns:
+            Dictionary containing team ADRs and odds
+        """
+        # Get player stats for ADR calculation
+        all_stats = await self.get_comprehensive_player_stats()
+        steamid_adr_map = {stats['steamid64']: stats['avg_damage_per_round'] for stats in all_stats}
+
+        def get_player_adr(steamid64: int) -> float:
+            """Get player ADR by steamid64, return default if not found."""
+            return steamid_adr_map.get(steamid64, 70.0)  # Default ADR for new players
+
+        # Calculate team ADR sums
+        team1_adr = sum(get_player_adr(steamid) for steamid in team1_steamids)
+        team2_adr = sum(get_player_adr(steamid) for steamid in team2_steamids)
+
+        # Calculate odds (simple ratio-based)
+        total_adr = team1_adr + team2_adr
+        if total_adr > 0:
+            team1_odds = (team1_adr / total_adr) * 100
+            team2_odds = (team2_adr / total_adr) * 100
+        else:
+            team1_odds = team2_odds = 50.0
+
+        return {
+            'team1_adr': team1_adr,
+            'team2_adr': team2_adr,
+            'team1_odds': team1_odds,
+            'team2_odds': team2_odds,
+            'total_adr': total_adr
+        }

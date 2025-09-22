@@ -91,12 +91,42 @@ class CS2(commands.Cog):
                 else:
                     log.warning("didn't get image_url")
 
+                # Initialize variables for odds calculation
+                team1_steamids = []
+                team2_steamids = []
+                odds_footer = ""
+
                 async with self.bot.http_client.get(GUELO_TEAMS_JSON_URL) as resp:
                     if resp.status == 200:
                         data = await resp.json()
-                        
+
+                        # Extract steamids from team data and calculate odds once
+                        try:
+                            # Extract steamids from team data (adjust based on actual JSON structure)
+                            if 'team1' in data and 'players' in data['team1']:
+                                team1_steamids = [player.get('steamid64') for player in data['team1']['players'] if player.get('steamid64')]
+                            if 'team2' in data and 'players' in data['team2']:
+                                team2_steamids = [player.get('steamid64') for player in data['team2']['players'] if player.get('steamid64')]
+
+                            # Calculate odds once if we have enough players
+                            if len(team1_steamids) > 0 and len(team2_steamids) > 0:
+                                odds_data = await self.postgres_db.calculate_team_odds(team1_steamids, team2_steamids)
+                                team1_name = data.get('team1', {}).get('name', 'Team 1')
+                                team2_name = data.get('team2', {}).get('name', 'Team 2')
+
+                                # Create detailed odds text for the field
+                                odds_text = f"\n📊 **Match Odds (Based on ADR)**\n"
+                                odds_text += f"{team1_name}: {odds_data['team1_odds']:.1f}% (ADR: {odds_data['team1_adr']:.1f})\n"
+                                odds_text += f"{team2_name}: {odds_data['team2_odds']:.1f}% (ADR: {odds_data['team2_adr']:.1f})"
+                                embed.add_field(name="🎯 Predicted Odds", value=odds_text, inline=False)
+
+                                # Create compact odds text for footer use in live updates
+                                odds_footer = f"{team1_name} {odds_data['team1_odds']:.1f}% vs {team2_name} {odds_data['team2_odds']:.1f}%"
+                        except Exception as e:
+                            log.warning(f"Could not calculate odds: {e}")
+
                         embed.set_footer(text="Work in progress to bet points from this embed!")
-                        
+
                         message = await channel.send(embed=embed)
                     else:
                         log.warning(f"Failed to fetch from {GUELO_TEAMS_JSON_URL} guelo teams json: {resp.status}")
@@ -111,8 +141,8 @@ class CS2(commands.Cog):
                 # Start live tracking task
                 tracking_id = f"live_{datetime.now().timestamp()}"
                 self.live_messages[tracking_id] = message
-                
-                task = asyncio.create_task(self.poll_live_match(tracking_id, image_url))
+
+                task = asyncio.create_task(self.poll_live_match(tracking_id, image_url, odds_footer))
                 self.live_tracking_tasks[tracking_id] = task
                 log.info(f"Started live tracking task: {tracking_id}")
 
@@ -121,13 +151,13 @@ class CS2(commands.Cog):
             print(f"Discord action error: {e}")
             return web.Response(text='Error', status=500)
         
-    async def poll_live_match(self, tracking_id: str, image_url: str):
+    async def poll_live_match(self, tracking_id: str, image_url: str, odds_footer: str):
         """Poll for new matches and start score tracking when found."""
         try:
             log.info(f"Starting live match polling for {tracking_id}")
             last_match_id = await self.mysql_db.get_latest_match_id()
             log.info(f"Current latest match ID {last_match_id}, now waiting for new match to be created")
-            
+
             # Poll for new match creation
             while tracking_id in self.live_messages:
                 await asyncio.sleep(2)
@@ -136,7 +166,7 @@ class CS2(commands.Cog):
                 latest_match_id = await self.mysql_db.get_latest_match_id()
                 if latest_match_id > last_match_id:
                     log.info(f"New match detected: {latest_match_id}")
-                    await self.poll_match_scores(tracking_id, latest_match_id, image_url)
+                    await self.poll_match_scores(tracking_id, latest_match_id, image_url, odds_footer)
                     break
                     
         except Exception as e:
@@ -147,7 +177,7 @@ class CS2(commands.Cog):
             if tracking_id in self.live_messages:
                 del self.live_messages[tracking_id]
     
-    async def poll_match_scores(self, tracking_id: str, initial_match_id: int, image_url: str):
+    async def poll_match_scores(self, tracking_id: str, initial_match_id: int, image_url: str, odds_footer: str):
         """Poll match scores and update the Discord embed. Handles premature match endings by switching to newer matches."""
         try:
             log.info(f"Starting score polling for match {initial_match_id}")
@@ -186,17 +216,23 @@ class CS2(commands.Cog):
                 # Check if match is complete
                 if map_data and self._check_if_complete_match(map_data, match_data):
                     log.info(f"Match {current_match_id} completed")
-                    
+
                     # Final update with completed status
                     embed = discord.Embed(title="✅ Match Completed", color=discord.Color.green())
-                    
+
                     if image_url:
                         embed.set_image(url=image_url)
 
                     embed.add_field(name="🏆 Final Score", value=f"{team1_score} - {team2_score}", inline=True)
                     winner = match_data.get('team1_name') if team1_score > team2_score else match_data.get('team2_name')
                     embed.add_field(name="👑 Winner", value=winner or 'Unknown', inline=True)
-                    
+
+                    # Add odds to footer if available
+                    footer_text = "Match completed"
+                    if odds_footer:
+                        footer_text += f" • Pre-match odds: {odds_footer}"
+                    embed.set_footer(text=footer_text)
+
                     await message.edit(embed=embed)
 
                     # TODO: Resolve bets here
@@ -208,10 +244,16 @@ class CS2(commands.Cog):
 
                     if image_url:
                         embed.set_image(url=image_url)
-                    
+
+                    # Add odds to footer if available
+                    footer_text = "Live match in progress"
+                    if odds_footer:
+                        footer_text += f" • Odds: {odds_footer}"
+                    embed.set_footer(text=footer_text)
+
                     await message.edit(embed=embed)
                     log.info(f"Updated scores for match {current_match_id}: {team1_score}-{team2_score}")
-                    
+
                     last_team1_score = team1_score
                     last_team2_score = team2_score
                     
@@ -412,3 +454,56 @@ class CS2(commands.Cog):
         except Exception as e:
             log.error(f"Error in winrate command: {e}")
             await ctx.send("An error occurred while retrieving win/loss records.")
+
+    @commands.command()
+    async def cs2playerstats(self, ctx: commands.Context):
+        """Display CS2 player statistics summary table"""
+        try:
+            player_stats = await self.postgres_db.get_comprehensive_player_stats()
+
+            if not player_stats:
+                await ctx.send("No CS2 match data found.")
+                return
+
+            await self._send_summary_stats_table(ctx, player_stats)
+
+        except Exception as e:
+            log.error(f"Error in cs2playerstats command: {e}")
+            await ctx.send("An error occurred while retrieving player statistics.")
+
+    async def _send_summary_stats_table(self, ctx: commands.Context, player_stats: List[Dict[str, Any]]):
+        """Send a summary table of all players' key stats."""
+        embed = discord.Embed(
+            title="📊 CS2 Player Statistics Summary",
+            color=discord.Color.blue()
+        )
+
+        description = "```\n"
+        description += f"{'Player':<16} {'ADR':<5} {'K/D':<5} {'WR%':<5} {'Matches':<7}\n"
+        description += "─" * 50 + "\n"
+
+        for stats in player_stats[:30]:  # Limit to top 30 players
+            display_name = stats['display_name']
+            discord_id = stats['discord_id']
+
+            if discord_id:
+                try:
+                    member = ctx.guild.get_member(discord_id)
+                    if member:
+                        display_name = member.display_name
+                except:
+                    pass
+
+            name = display_name[:14]
+            adr = stats['avg_damage_per_round']
+            kd_ratio = stats['kd_ratio']
+            winrate = stats['winrate']
+            matches = stats['matches_played']
+
+            description += f"{name:<16} {adr:<5.0f} {kd_ratio:<5.2f} {winrate:<5.1f} {matches:<7}\n"
+
+        description += "```"
+        embed.description = description
+        embed.set_footer(text="Showing top 30 players by ADR")
+
+        await ctx.send(embed=embed)
