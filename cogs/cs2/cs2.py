@@ -365,3 +365,50 @@ class CS2(commands.Cog):
         embed.set_footer(text=f"Match ID: {match_id}")
 
         await ctx.send(embed=embed)
+
+    @commands.command()
+    async def winrate(self, ctx: commands.Context):
+        """Display win/loss records for all CS2 players"""
+        try:
+            player_records = await self.postgres_db.get_player_winrates()
+
+            if not player_records:
+                await ctx.send("No CS2 match data found.")
+                return
+
+            embed = discord.Embed(
+                title="🏆 CS2 Player Win/Loss Records",
+                color=discord.Color.green()
+            )
+
+            description = "```\n"
+            description += f"{'Player':<20} {'Wins':<6} {'Losses':<6} {'WR%':<6}\n"
+            description += "─" * 44 + "\n"
+
+            for record in player_records:
+                display_name = record['display_name']
+                discord_id = record['discord_id']
+
+                if discord_id:
+                    try:
+                        member = ctx.guild.get_member(discord_id)
+                        if member:
+                            display_name = member.display_name
+                    except:
+                        pass
+
+                name = display_name[:18]
+                wins = record['wins']
+                losses = record['losses']
+                winrate = record['winrate']
+
+                description += f"{name:<20} {wins:<6} {losses:<6} {winrate:<6.1f}\n"
+
+            description += "```"
+            embed.description = description
+
+            await ctx.send(embed=embed)
+
+        except Exception as e:
+            log.error(f"Error in winrate command: {e}")
+            await ctx.send("An error occurred while retrieving win/loss records.")

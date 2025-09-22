@@ -283,9 +283,56 @@ class CS2PostgresDb:
     async def get_match_players(self, match_id: int) -> List[Dict[str, Any]]:
         """Get all player data for a specific match."""
         query = f"""
-            SELECT * FROM {self.CS2_PLAYER_STATS} 
-            WHERE matchid = $1 
+            SELECT * FROM {self.CS2_PLAYER_STATS}
+            WHERE matchid = $1
             ORDER BY kills DESC
         """
         rows = await self.pool.fetch(query, match_id)
+        return [dict(row) for row in rows]
+
+    async def get_player_winrates(self) -> List[Dict[str, Any]]:
+        """Calculate win/loss records for all players, grouped by steamid64."""
+        query = f"""
+            WITH player_matches AS (
+                SELECT
+                    ps.steamid64,
+                    ps.team_name,
+                    m.winner,
+                    CASE
+                        WHEN ps.team_name = m.winner THEN 1
+                        ELSE 0
+                    END as is_win
+                FROM {self.CS2_PLAYER_STATS} ps
+                JOIN {self.CS2_MATCHES} m ON ps.matchid = m.matchid
+            ),
+            player_stats AS (
+                SELECT
+                    steamid64,
+                    SUM(is_win) as wins,
+                    COUNT(*) - SUM(is_win) as losses,
+                    COUNT(*) as total_matches,
+                    ROUND(
+                        CASE
+                            WHEN COUNT(*) > 0 THEN (SUM(is_win)::DECIMAL / COUNT(*)) * 100
+                            ELSE 0
+                        END,
+                        1
+                    ) as winrate
+                FROM player_matches
+                GROUP BY steamid64
+                HAVING COUNT(*) > 0
+            )
+            SELECT
+                ps.steamid64,
+                ps.wins,
+                ps.losses,
+                ps.total_matches,
+                ps.winrate,
+                COALESCE(u.discord_username, 'Unknown Player') as display_name,
+                u.discord_id
+            FROM player_stats ps
+            LEFT JOIN users u ON ps.steamid64 = u.steamid64
+            ORDER BY ps.winrate DESC, ps.wins DESC
+        """
+        rows = await self.pool.fetch(query)
         return [dict(row) for row in rows]
