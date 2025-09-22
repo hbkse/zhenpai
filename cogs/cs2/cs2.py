@@ -456,8 +456,14 @@ class CS2(commands.Cog):
             await ctx.send("An error occurred while retrieving win/loss records.")
 
     @commands.command()
-    async def cs2playerstats(self, ctx: commands.Context):
-        """Display CS2 player statistics summary table"""
+    @commands.is_owner()
+    async def cs2playerstats(self, ctx: commands.Context, view: str = "standard"):
+        """Display CS2 player statistics summary table
+
+        Usage: !cs2playerstats [view]
+        - standard (default): Shows ADR, K/D, WR%, Matches
+        - detailed: Shows HS%, V1%, Ent%, Flash%, Util Dmg, Matches
+        """
         try:
             player_stats = await self.postgres_db.get_comprehensive_player_stats()
 
@@ -465,7 +471,10 @@ class CS2(commands.Cog):
                 await ctx.send("No CS2 match data found.")
                 return
 
-            await self._send_summary_stats_table(ctx, player_stats)
+            if view.lower() == "detailed":
+                await self._send_detailed_stats_table(ctx, player_stats)
+            else:
+                await self._send_summary_stats_table(ctx, player_stats)
 
         except Exception as e:
             log.error(f"Error in cs2playerstats command: {e}")
@@ -504,6 +513,45 @@ class CS2(commands.Cog):
 
         description += "```"
         embed.description = description
-        embed.set_footer(text="Showing top 30 players by ADR")
+        embed.set_footer(text="Showing top 30 players by ADR • Use 'detailed' for advanced stats")
+
+        await ctx.send(embed=embed)
+
+    async def _send_detailed_stats_table(self, ctx: commands.Context, player_stats: List[Dict[str, Any]]):
+        """Send a detailed table of advanced player stats."""
+        embed = discord.Embed(
+            title="📊 CS2 Advanced Player Statistics",
+            color=discord.Color.blue()
+        )
+
+        description = "```\n"
+        description += f"{'Player':<14} {'HS%':<4} {'V1%':<4} {'Ent%':<4} {'Fl%':<4} {'UD':<4} {'Matches':<7}\n"
+        description += "─" * 55 + "\n"
+
+        for stats in player_stats[:30]:  # Limit to top 30 players
+            display_name = stats['display_name']
+            discord_id = stats['discord_id']
+
+            if discord_id:
+                try:
+                    member = ctx.guild.get_member(discord_id)
+                    if member:
+                        display_name = member.display_name
+                except:
+                    pass
+
+            name = display_name[:12]
+            hs_pct = stats['headshot_percentage']
+            clutch_pct = stats['clutch_success_rate']
+            entry_pct = stats['entry_success_rate']
+            flash_pct = stats['flash_success_rate']
+            util_dmg = stats['avg_utility_damage']
+            matches = stats['matches_played']
+
+            description += f"{name:<14} {hs_pct:<4.0f} {clutch_pct:<4.0f} {entry_pct:<4.0f} {flash_pct:<4.0f} {util_dmg:<4.0f} {matches:<7}\n"
+
+        description += "```"
+        embed.description = description
+        embed.set_footer(text="HS%=Headshot%, V1%=1v1 Clutch%, Ent%=Entry%, Fl%=Flash%, UD=Utility Damage")
 
         await ctx.send(embed=embed)
