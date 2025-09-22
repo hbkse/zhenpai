@@ -24,6 +24,8 @@ DEFAULT_PLAYERS = [
     "1013320161195",  # ratgodx,
     "1011048414851",  # ugly
     "2348641801",  # AqukinnMaster
+    "2256395518",  # GaryBenton
+    "1000297188679",  # keke
 ]
 
 
