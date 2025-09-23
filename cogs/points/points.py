@@ -112,6 +112,97 @@ class Points(commands.Cog):
 
         await message.edit(embed=embed)
 
+    @commands.command()
+    async def betleaderboard(self, ctx: commands.Context):
+        """Gets the CS2 betting leaderboard showing top 5 profit and top 5 loss"""
+
+        # Send loading embed first
+        loading_embed = discord.Embed(
+            title="🎰 CS2 Betting Leaderboard",
+            description="🔄 Loading betting statistics...",
+            color=0xff6b35,  # Orange color for betting
+            timestamp=datetime.utcnow()
+        )
+        loading_embed.set_footer(text="!betleaderboard | Shows CS2 betting performance")
+
+        # Send the loading message
+        message = await ctx.send(embed=loading_embed)
+
+        # Get betting statistics
+        betting_stats = await self.db.get_cs2_betting_leaderboard(limit=50)  # Get more to sort properly
+
+        if not betting_stats:
+            embed = discord.Embed(
+                title="🎰 CS2 Betting Leaderboard",
+                description="No CS2 betting data found!",
+                color=0xff6b6b
+            )
+            await message.edit(embed=embed)
+            return
+
+        # Create embed
+        embed = discord.Embed(
+            title="🎰 CS2 Betting Leaderboard",
+            description="Top performers and biggest losers",
+            color=0xff6b35,  # Orange color for betting
+        )
+
+        # Sort by profit (descending for top 5, ascending for bottom 5)
+        top_profit = sorted(betting_stats, key=lambda x: x['net_profit'], reverse=True)[:5]
+        top_loss = sorted(betting_stats, key=lambda x: x['net_profit'])[:5]
+
+        # Top 5 Profit
+        profit_text = ""
+        for i, record in enumerate(top_profit):
+            try:
+                user = await ctx.bot.fetch_user(record['discord_id'])
+                username = user.display_name
+            except:
+                username = f"User#{record['discord_id']}"
+
+            net_profit = record['net_profit']
+            wins = record['wins']
+            losses = record['losses']
+            win_pct = record['win_percentage']
+
+            profit_str = f"+{net_profit:,}" if net_profit > 0 else f"{net_profit:,}"
+            profit_text += f"`#{i+1}` **{username}** - `{profit_str}` pts\n"
+            profit_text += f"    📊 {wins}W-{losses}L ({win_pct}%)\n\n"
+
+        embed.add_field(
+            name="📈 Top 5 Gain",
+            value=profit_text,
+            inline=True
+        )
+
+        # Top 5 Loss
+        loss_text = ""
+        for i, record in enumerate(top_loss):
+            try:
+                user = await ctx.bot.fetch_user(record['discord_id'])
+                username = user.display_name
+            except:
+                username = f"User#{record['discord_id']}"
+
+            net_profit = record['net_profit']
+            wins = record['wins']
+            losses = record['losses']
+            win_pct = record['win_percentage']
+
+            profit_str = f"{net_profit:,}"
+            loss_text += f"`#{i+1}` **{username}** - `{profit_str}` pts\n"
+            loss_text += f"    📊 {wins}W-{losses}L ({win_pct}%)\n\n"
+
+        embed.add_field(
+            name="📉 Top 5 Loss",
+            value=loss_text,
+            inline=True
+        )
+
+        embed.set_footer(text="!betleaderboard | Based on Won/Lost CS2 Bet transactions")
+
+        await message.edit(embed=embed)
+
     @commands.command(aliases=['p', 'mp', 'mypoints'])
     async def points(self, ctx: commands.Context, user: discord.Member = None, *, view_type: str = "graph"):
         """Displays the points history and total for this user"""

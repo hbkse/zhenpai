@@ -219,3 +219,39 @@ class PointsDb:
         )
         """
         return await self.pool.fetch(query)
+
+    async def get_cs2_betting_leaderboard(self, limit: int = 15) -> List[Dict[str, Any]]:
+        """Get CS2 betting statistics for users with Admin Reward category and Won/Lost CS2 Bet reasons."""
+        query = """
+        WITH bet_stats AS (
+            SELECT
+                discord_id,
+                SUM(CASE WHEN reason = 'Won CS2 Bet' THEN change_value ELSE 0 END) as total_winnings,
+                SUM(CASE WHEN reason = 'Lost CS2 Bet' THEN ABS(change_value) ELSE 0 END) as total_losses,
+                COUNT(CASE WHEN reason = 'Won CS2 Bet' THEN 1 END) as wins,
+                COUNT(CASE WHEN reason = 'Lost CS2 Bet' THEN 1 END) as losses,
+                SUM(change_value) as net_profit
+            FROM points
+            WHERE category = 'Admin Reward'
+            AND reason IN ('Won CS2 Bet', 'Lost CS2 Bet')
+            GROUP BY discord_id
+            HAVING COUNT(*) > 0
+        )
+        SELECT
+            discord_id,
+            total_winnings,
+            total_losses,
+            wins,
+            losses,
+            net_profit,
+            (wins + losses) as total_bets,
+            CASE
+                WHEN (wins + losses) > 0 THEN ROUND((wins::DECIMAL / (wins + losses)) * 100, 1)
+                ELSE 0
+            END as win_percentage
+        FROM bet_stats
+        ORDER BY net_profit DESC
+        LIMIT $1
+        """
+        rows = await self.pool.fetch(query, limit)
+        return [dict(row) for row in rows]

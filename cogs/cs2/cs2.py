@@ -217,23 +217,31 @@ class CS2(commands.Cog):
                 if map_data and self._check_if_complete_match(map_data, match_data):
                     log.info(f"Match {current_match_id} completed")
 
-                    # Final update with completed status
-                    embed = discord.Embed(title="✅ Match Completed", color=discord.Color.green())
+                    # Create new completion message
+                    completion_embed = discord.Embed(title="✅ Match Completed", color=discord.Color.green())
 
                     if image_url:
-                        embed.set_image(url=image_url)
+                        completion_embed.set_image(url=image_url)
 
-                    embed.add_field(name="🏆 Final Score", value=f"{team1_score} - {team2_score}", inline=True)
+                    completion_embed.add_field(name="🏆 Final Score", value=f"{team1_score} - {team2_score}", inline=True)
                     winner = match_data.get('team1_name') if team1_score > team2_score else match_data.get('team2_name')
-                    embed.add_field(name="👑 Winner", value=winner or 'Unknown', inline=True)
+                    completion_embed.add_field(name="👑 Winner", value=winner or 'Unknown', inline=True)
 
                     # Add odds to footer if available
                     footer_text = "Match completed"
                     if odds_footer:
                         footer_text += f" • Pre-match odds: {odds_footer}"
-                    embed.set_footer(text=footer_text)
+                    completion_embed.set_footer(text=footer_text)
 
-                    await message.edit(embed=embed)
+                    # Post new completion message and delete old live message
+                    channel = message.channel
+                    await channel.send(embed=completion_embed)
+
+                    try:
+                        await message.delete()
+                        log.info(f"Deleted old live tracking message for match {current_match_id}")
+                    except Exception as e:
+                        log.warning(f"Could not delete old live message: {e}")
 
                     # TODO: Resolve bets here
                     break
