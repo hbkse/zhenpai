@@ -12,6 +12,7 @@ class PointsDb:
     PROCESSED_EVENTS = 'processed_events'
     CS2_MATCHES = 'cs2_matches'
     CS2_PLAYER_STATS = 'cs2_player_stats'
+    BETS = 'bets'
 
     def __init__(self, pool: Pool):
         self.pool = pool
@@ -255,3 +256,81 @@ class PointsDb:
         """
         rows = await self.pool.fetch(query, limit)
         return [dict(row) for row in rows]
+
+    async def create_bet(self, creator_discord_id: int, description: str, minimum_bet: int = 100) -> int:
+        """Create a new bet and return the bet ID."""
+        query = """
+        INSERT INTO bets (creator_discord_id, description, minimum_bet, status, created_at)
+        VALUES ($1, $2, $3, 'open', NOW())
+        RETURNING id
+        """
+        bet_id = await self.pool.fetchval(query, creator_discord_id, description, minimum_bet)
+        return bet_id
+
+    async def get_bet_by_id(self, bet_id: int) -> Optional[Dict[str, Any]]:
+        """Get bet details by ID."""
+        query = """
+        SELECT
+            id,
+            creator_discord_id,
+            description,
+            minimum_bet,
+            status,
+            created_at,
+            resolved_at,
+            winner_option,
+            total_pool
+        FROM bets
+        WHERE id = $1
+        """
+        row = await self.pool.fetchrow(query, bet_id)
+        return dict(row) if row else None
+
+    async def get_active_bets(self, limit: int = 10) -> List[Dict[str, Any]]:
+        """Get bets that are open for betting."""
+        query = """
+        SELECT
+            id,
+            creator_discord_id,
+            description,
+            minimum_bet,
+            status,
+            created_at,
+            total_pool
+        FROM bets
+        WHERE status = 'open'
+        ORDER BY created_at DESC
+        LIMIT $1
+        """
+        rows = await self.pool.fetch(query, limit)
+        return [dict(row) for row in rows]
+
+    async def close_bet_for_betting(self, bet_id: int, closer_discord_id: int) -> bool:
+        """Close a bet to new participants (moves from open -> closed)."""
+        query = """
+        UPDATE bets
+        SET status = 'closed'
+        WHERE id = $1 AND status = 'open'
+        """
+        result = await self.pool.execute(query, bet_id)
+        return result == "UPDATE 1"
+
+    async def resolve_bet_with_winner(self, bet_id: int, winner_option: str, resolver_discord_id: int) -> bool:
+        """Resolve a bet with a winner and process payouts (moves from closed -> resolved)."""
+        async with self.pool.acquire() as conn:
+            async with conn.transaction():
+                # Update bet status to resolved
+                update_result = await conn.execute("""
+                    UPDATE bets
+                    SET status = 'resolved', resolved_at = NOW(), winner_option = $2
+                    WHERE id = $1 AND status = 'closed'
+                """, bet_id, winner_option)
+
+                if update_result != "UPDATE 1":
+                    return False
+
+                # TODO: Process payouts to winners
+                # This will be implemented when we have bet participants table
+
+                log.info(f"Bet {bet_id} resolved with winner '{winner_option}' by user {resolver_discord_id}")
+                return True

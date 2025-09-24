@@ -102,11 +102,20 @@ class CS2(commands.Cog):
 
                         # Extract steamids from team data and calculate odds once
                         try:
-                            # Extract steamids from team data (adjust based on actual JSON structure)
+                            # Extract steamids from team data - players are keys in the players dict
                             if 'team1' in data and 'players' in data['team1']:
-                                team1_steamids = [player.get('steamid64') for player in data['team1']['players'] if player.get('steamid64')]
+                                team1_players = data['team1']['players']
+                                if isinstance(team1_players, dict):
+                                    team1_steamids = [int(steamid64) for steamid64 in team1_players.keys() if steamid64.isdigit()]
+                                else:
+                                    team1_steamids = []
+
                             if 'team2' in data and 'players' in data['team2']:
-                                team2_steamids = [player.get('steamid64') for player in data['team2']['players'] if player.get('steamid64')]
+                                team2_players = data['team2']['players']
+                                if isinstance(team2_players, dict):
+                                    team2_steamids = [int(steamid64) for steamid64 in team2_players.keys() if steamid64.isdigit()]
+                                else:
+                                    team2_steamids = []
 
                             # Calculate odds once if we have enough players
                             if len(team1_steamids) > 0 and len(team2_steamids) > 0:
@@ -116,12 +125,12 @@ class CS2(commands.Cog):
 
                                 # Create detailed odds text for the field
                                 odds_text = f"\n📊 **Match Odds (Based on ADR)**\n"
-                                odds_text += f"{team1_name}: {odds_data['team1_odds']:.1f}% (ADR: {odds_data['team1_adr']:.1f})\n"
-                                odds_text += f"{team2_name}: {odds_data['team2_odds']:.1f}% (ADR: {odds_data['team2_adr']:.1f})"
+                                odds_text += f"{team1_name}: {odds_data['team1_odds']:.2f}% (ADR: {odds_data['team1_adr']:.1f})\n"
+                                odds_text += f"{team2_name}: {odds_data['team2_odds']:.2f}% (ADR: {odds_data['team2_adr']:.1f})"
                                 embed.add_field(name="🎯 Predicted Odds", value=odds_text, inline=False)
 
                                 # Create compact odds text for footer use in live updates
-                                odds_footer = f"{team1_name} {odds_data['team1_odds']:.1f}% vs {team2_name} {odds_data['team2_odds']:.1f}%"
+                                odds_footer = f"{team1_name} {odds_data['team1_odds']:.2f}% vs {team2_name} {odds_data['team2_odds']:.2f}%"
                         except Exception as e:
                             log.warning(f"Could not calculate odds: {e}")
 
@@ -415,6 +424,7 @@ class CS2(commands.Cog):
         embed.set_footer(text=f"Match ID: {match_id}")
 
         await ctx.send(embed=embed)
+
 
     @commands.command()
     async def winrate(self, ctx: commands.Context):

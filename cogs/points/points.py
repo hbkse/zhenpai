@@ -695,6 +695,78 @@ class Points(commands.Cog):
             log.error(f"Error in givepoints command: {e}")
             await ctx.send("❌ An error occurred while processing the points transfer. Please try again.")
 
+    @app_commands.command(name="bet", description="Create or manage bets")
+    @app_commands.describe(
+        action="What to do with bets",
+        description="Description of the bet to create",
+        minimum_bet="Minimum points required to participate (default: 100)"
+    )
+    @app_commands.choices(action=[
+        app_commands.Choice(name="Create", value="create"),
+        app_commands.Choice(name="List", value="list")
+    ])
+    async def bet_slash(self, interaction: discord.Interaction, action: str, description: str = None, minimum_bet: int = 100):
+        """Basic betting system slash command"""
+        try:
+            if action == "create":
+                if not description:
+                    await interaction.response.send_message("❌ Description is required to create a bet.", ephemeral=True)
+                    return
+
+                if minimum_bet < 10 or minimum_bet > 10000:
+                    await interaction.response.send_message("❌ Minimum bet must be between 10 and 10,000 points.", ephemeral=True)
+                    return
+
+                # Create the bet
+                bet_id = await self.db.create_bet(interaction.user.id, description, minimum_bet)
+
+                embed = discord.Embed(
+                    title="🎲 New Bet Created",
+                    description=description,
+                    color=0x00ff00,
+                    timestamp=datetime.utcnow()
+                )
+
+                embed.add_field(name="💰 Minimum Bet", value=f"{minimum_bet:,} points", inline=True)
+                embed.add_field(name="📊 Status", value="🟢 Open", inline=True)
+                embed.add_field(name="👤 Creator", value=interaction.user.mention, inline=True)
+
+                await interaction.response.send_message(embed=embed)
+                log.info(f"User {interaction.user.id} created bet {bet_id}: {description}")
+
+            elif action == "list":
+                active_bets = await self.db.get_active_bets(limit=10)
+
+                embed = discord.Embed(
+                    title="🎲 Active Bets",
+                    color=0xff6b35,
+                    timestamp=datetime.utcnow()
+                )
+
+                if not active_bets:
+                    embed.description = "No active bets found."
+                    await interaction.response.send_message(embed=embed, ephemeral=True)
+                    return
+
+                bet_list = ""
+                for bet in active_bets:
+                    try:
+                        creator = await interaction.client.fetch_user(bet['creator_discord_id'])
+                        creator_name = creator.display_name
+                    except:
+                        creator_name = f"User#{bet['creator_discord_id']}"
+
+                    status_emoji = "🟢" if bet['status'] == 'open' else "🟡"
+                    bet_list += f"{status_emoji} **{bet['description'][:50]}{'...' if len(bet['description']) > 50 else ''}**\n"
+                    bet_list += f"    💰 Min: {bet['minimum_bet']:,} pts • 👤 {creator_name}\n\n"
+
+                embed.description = bet_list
+                await interaction.response.send_message(embed=embed, ephemeral=True)
+
+        except Exception as e:
+            log.error(f"Error in bet command: {e}")
+            await interaction.response.send_message("❌ An error occurred while processing the bet command.", ephemeral=True)
+
     @givepoints.error
     async def givepoints_error(self, ctx: commands.Context, error):
         """Handle errors for the givepoints command"""
