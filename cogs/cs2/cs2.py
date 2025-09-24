@@ -436,6 +436,10 @@ class CS2(commands.Cog):
                 await ctx.send("No CS2 match data found.")
                 return
 
+            # Separate players by match count
+            qualified = [p for p in player_records if p['total_matches'] >= 10]
+            unqualified = [p for p in player_records if p['total_matches'] < 10]
+
             embed = discord.Embed(
                 title="🏆 CS2 Player Win/Loss Records",
                 color=discord.Color.green()
@@ -445,7 +449,8 @@ class CS2(commands.Cog):
             description += f"{'Player':<20} {'Wins':<6} {'Losses':<6} {'WR%':<6}\n"
             description += "─" * 44 + "\n"
 
-            for record in player_records:
+            # Add qualified players (10+ matches)
+            for record in qualified:
                 display_name = record['display_name']
                 discord_id = record['discord_id']
 
@@ -463,6 +468,31 @@ class CS2(commands.Cog):
                 winrate = record['winrate']
 
                 description += f"{name:<20} {wins:<6} {losses:<6} {winrate:<6.1f}\n"
+
+            # Add separator and unqualified players if any exist
+            if unqualified:
+                description += "\n" + "─" * 44 + "\n"
+                description += "Less than 10 matches played:\n"
+                description += "─" * 44 + "\n"
+
+                for record in unqualified:
+                    display_name = record['display_name']
+                    discord_id = record['discord_id']
+
+                    if discord_id:
+                        try:
+                            member = ctx.guild.get_member(discord_id)
+                            if member:
+                                display_name = member.display_name
+                        except:
+                            pass
+
+                    name = display_name[:18]
+                    wins = record['wins']
+                    losses = record['losses']
+                    winrate = record['winrate']
+
+                    description += f"{name:<20} {wins:<6} {losses:<6} {winrate:<6.1f}\n"
 
             description += "```"
             embed.description = description

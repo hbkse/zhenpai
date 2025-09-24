@@ -632,10 +632,6 @@ class Points(commands.Cog):
                 await ctx.send("❌ Amount must be positive.")
                 return
             
-            if amount > 100000:  # Sanity check to prevent extreme values
-                await ctx.send("❌ Amount must be 100,000 points or less.")
-                return
-            
             if user.id == ctx.author.id:
                 await ctx.send("❌ You can't give points to yourself.")
                 return
