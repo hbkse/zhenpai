@@ -124,9 +124,9 @@ class CS2(commands.Cog):
                                 team2_name = data.get('team2', {}).get('name', 'Team 2')
 
                                 # Create detailed odds text for the field
-                                odds_text = f"\n📊 **Match Odds (Based on ADR)**\n"
-                                odds_text += f"{team1_name}: {odds_data['team1_odds']:.2f}% (ADR: {odds_data['team1_adr']:.1f})\n"
-                                odds_text += f"{team2_name}: {odds_data['team2_odds']:.2f}% (ADR: {odds_data['team2_adr']:.1f})"
+                                odds_text = f"\n📊 **Match Odds**\n"
+                                odds_text += f"{team1_name}: {odds_data['team1_odds']:.2f}%\n"
+                                odds_text += f"{team2_name}: {odds_data['team2_odds']:.2f}%"
                                 embed.add_field(name="🎯 Predicted Odds", value=odds_text, inline=False)
 
                                 # Create compact odds text for footer use in live updates
@@ -425,6 +425,82 @@ class CS2(commands.Cog):
 
         await ctx.send(embed=embed)
 
+    @commands.command()
+    async def testodds(self, ctx: commands.Context):
+        """Test command for odds calculation - DELETE AFTER TESTING"""
+        try:
+            async with self.bot.http_client.get(GUELO_TEAMS_JSON_URL) as resp:
+                if resp.status != 200:
+                    await ctx.send(f"❌ Failed to fetch team data: {resp.status}")
+                    return
+
+                data = await resp.json()
+
+                # Extract steamids from team data
+                team1_steamids = []
+                team2_steamids = []
+
+                if 'team1' in data and 'players' in data['team1']:
+                    team1_players = data['team1']['players']
+                    if isinstance(team1_players, dict):
+                        team1_steamids = [int(steamid64) for steamid64 in team1_players.keys() if steamid64.isdigit()]
+
+                if 'team2' in data and 'players' in data['team2']:
+                    team2_players = data['team2']['players']
+                    if isinstance(team2_players, dict):
+                        team2_steamids = [int(steamid64) for steamid64 in team2_players.keys() if steamid64.isdigit()]
+
+                if len(team1_steamids) == 0 or len(team2_steamids) == 0:
+                    await ctx.send("❌ Could not extract team steamids from data")
+                    return
+
+                # Calculate odds
+                odds_data = await self.postgres_db.calculate_team_odds(team1_steamids, team2_steamids)
+                team1_name = data.get('team1', {}).get('name', 'Team 1')
+                team2_name = data.get('team2', {}).get('name', 'Team 2')
+
+                # Create test embed
+                embed = discord.Embed(
+                    title="🎯 Odds Test Results",
+                    color=discord.Color.blue()
+                )
+
+                embed.add_field(
+                    name="Team Data",
+                    value=f"**{team1_name}:** {len(team1_steamids)} players\n**{team2_name}:** {len(team2_steamids)} players",
+                    inline=False
+                )
+
+                embed.add_field(
+                    name="Raw ADR Totals",
+                    value=f"**{team1_name}:** {odds_data['team1_adr']:.1f}\n**{team2_name}:** {odds_data['team2_adr']:.1f}",
+                    inline=True
+                )
+
+                embed.add_field(
+                    name="Normalized Sums",
+                    value=f"**{team1_name}:** {odds_data['team1_normalized_sum']:.1f}\n**{team2_name}:** {odds_data['team2_normalized_sum']:.1f}",
+                    inline=True
+                )
+
+                embed.add_field(
+                    name="Win Odds",
+                    value=f"**{team1_name}:** {odds_data['team1_odds']:.2f}%\n**{team2_name}:** {odds_data['team2_odds']:.2f}%",
+                    inline=True
+                )
+
+                embed.add_field(
+                    name="Debug Info",
+                    value=f"Average ADR: {odds_data['average_adr']:.1f}\nADR Difference: {odds_data['team1_normalized_sum'] - odds_data['team2_normalized_sum']:.1f}",
+                    inline=False
+                )
+
+                embed.set_footer(text="DELETE THIS COMMAND AFTER TESTING")
+                await ctx.send(embed=embed)
+
+        except Exception as e:
+            log.error(f"Error in testodds command: {e}")
+            await ctx.send(f"❌ Error testing odds: {e}")
 
     @commands.command()
     async def winrate(self, ctx: commands.Context):

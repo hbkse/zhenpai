@@ -466,7 +466,7 @@ class CS2PostgresDb:
         return [dict(row) for row in rows]
 
     async def calculate_team_odds(self, team1_steamids: List[int], team2_steamids: List[int]) -> Dict[str, Any]:
-        """Calculate match odds based on team ADR sums.
+        """Calculate match odds based on team ADR sums, normalized by subtracting average ADR.
 
         Args:
             team1_steamids: List of steamid64s for team 1
@@ -477,28 +477,63 @@ class CS2PostgresDb:
         """
         # Get player stats for ADR calculation
         all_stats = await self.get_comprehensive_player_stats()
-        steamid_adr_map = {stats['steamid64']: stats['avg_damage_per_round'] for stats in all_stats}
+        steamid_adr_map = {stats['steamid64']: float(stats['avg_damage_per_round']) for stats in all_stats}
+
+        # Calculate average ADR across players with 5+ matches
+        qualified_stats = [stats for stats in all_stats if stats['matches_played'] >= 5]
+        if qualified_stats:
+            average_adr = sum(float(stats['avg_damage_per_round']) for stats in qualified_stats) / len(qualified_stats)
+        else:
+            average_adr = 70.0  # Default if no qualified stats
 
         def get_player_adr(steamid64: int) -> float:
             """Get player ADR by steamid64, return default if not found."""
-            return steamid_adr_map.get(steamid64, 70.0)  # Default ADR for new players
+            return steamid_adr_map.get(steamid64, average_adr)  # Use average as default
 
-        # Calculate team ADR sums
+        # Calculate team ADR sums (normalized by subtracting average)
+        team1_normalized_adrs = [get_player_adr(steamid) - average_adr for steamid in team1_steamids]
+        team2_normalized_adrs = [get_player_adr(steamid) - average_adr for steamid in team2_steamids]
+
+        team1_normalized_sum = sum(team1_normalized_adrs)
+        team2_normalized_sum = sum(team2_normalized_adrs)
+
+        # Calculate raw ADR sums for display
         team1_adr = sum(get_player_adr(steamid) for steamid in team1_steamids)
         team2_adr = sum(get_player_adr(steamid) for steamid in team2_steamids)
 
-        # Calculate odds (simple ratio-based)
-        total_adr = team1_adr + team2_adr
-        if total_adr > 0:
-            team1_odds = (team1_adr / total_adr) * 100
-            team2_odds = (team2_adr / total_adr) * 100
-        else:
+        # Calculate odds based on normalized ADR difference
+        # If both teams are exactly average, odds are 50/50
+        # Otherwise, calculate based on relative performance above/below average
+        if team1_normalized_sum == team2_normalized_sum:
             team1_odds = team2_odds = 50.0
+        else:
+            # Use normalized difference to calculate odds
+            adr_difference = team1_normalized_sum - team2_normalized_sum
+
+            # Convert difference to probability using a sigmoid-like function
+            # The larger the absolute difference, the more skewed the odds
+            total_abs_difference = abs(adr_difference)
+
+            if total_abs_difference > 0:
+                # Scale the difference - every 50 ADR difference = ~20% odds shift
+                scaling_factor = total_abs_difference / 50.0
+
+                if adr_difference > 0:  # team1 is better
+                    team1_odds = 50.0 + min(40.0, scaling_factor * 20.0)
+                    team2_odds = 100.0 - team1_odds
+                else:  # team2 is better
+                    team2_odds = 50.0 + min(40.0, scaling_factor * 20.0)
+                    team1_odds = 100.0 - team2_odds
+            else:
+                team1_odds = team2_odds = 50.0
 
         return {
             'team1_adr': team1_adr,
             'team2_adr': team2_adr,
             'team1_odds': team1_odds,
             'team2_odds': team2_odds,
-            'total_adr': total_adr
+            'total_adr': team1_adr + team2_adr,
+            'average_adr': average_adr,
+            'team1_normalized_sum': team1_normalized_sum,
+            'team2_normalized_sum': team2_normalized_sum
         }

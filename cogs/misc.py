@@ -47,20 +47,66 @@ class Misc(commands.Cog):
         await ctx.send(f"Bye bye :wave:")
 
     @commands.command()
-    async def deletelast(self, ctx: commands.Context, n: int):
-        if n < 1:
-            await ctx.send("Please provide a valid number greater than 0.")
-            return
+    async def deletelast(self, ctx: commands.Context, n: Optional[int] = None):
+        """Delete last N messages, or if replying to a message, delete up to and including that message."""
 
-        if n > 100:
-            await ctx.send("bruh aint no way you tryna delete that much sounds kinda sus do it in batches of 100 so you dont wipe the entire channel")
-            return
+        # Delete based on reply
+        if ctx.message.reference and ctx.message.reference.message_id:
+            target_message_id = ctx.message.reference.message_id
 
-        messages = []
-        async for message in ctx.channel.history(limit=n + 1):
-            messages.append(message)
+            try:
+                target_message = await ctx.channel.fetch_message(target_message_id)
+            except discord.NotFound:
+                await ctx.send("❌ Target message not found.")
+                return
+            except discord.Forbidden:
+                await ctx.send("❌ No permission to access that message.")
+                return
 
-        await ctx.channel.delete_messages(messages)
+            # Count messages from target to now (including the target message)
+            messages_to_delete = [ctx.message]  # Include the command message
+            async for message in ctx.channel.history(after=target_message, limit=None):
+                if message.id != ctx.message.id:  # Don't double-count command message
+                    messages_to_delete.append(message)
+
+            # Add the target message itself
+            messages_to_delete.append(target_message)
+
+            message_count = len(messages_to_delete)
+
+            if message_count > 200:
+                await ctx.send(f"❌ Cannot delete {message_count} messages (max 200). Target message is too far back that's kinda scary.")
+                return
+
+            try:
+                await ctx.channel.delete_messages(messages_to_delete)
+                log.info(f"User {ctx.author} deleted {message_count} messages up to message {target_message_id} in {ctx.channel}")
+            except discord.Forbidden:
+                await ctx.send("❌ Missing permissions to delete messages.")
+            except Exception as e:
+                await ctx.send(f"❌ Error deleting messages: {e}")
+                log.error(f"Error in deletelast reply command: {e}")
+
+        else:
+            # Delete last N messages
+            if n is None:
+                await ctx.send("❌ Please provide a number of messages to delete or reply to a message.")
+                return
+
+            if n < 1:
+                await ctx.send("Please provide a valid number greater than 0.")
+                return
+
+            if n > 100:
+                await ctx.send("bruh aint no way you tryna delete that much sounds kinda sus do it in batches of 100 so you dont wipe the entire channel")
+                return
+
+            messages = []
+            async for message in ctx.channel.history(limit=n + 1):
+                messages.append(message)
+
+            await ctx.channel.delete_messages(messages)
+            log.info(f"User {ctx.author} deleted {len(messages)} messages in {ctx.channel}")
 
     @commands.command()
     async def roll(self, ctx: commands.Context, n: int = 100):
