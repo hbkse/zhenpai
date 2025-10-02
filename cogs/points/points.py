@@ -620,6 +620,7 @@ class Points(commands.Cog):
             await ctx.send("❌ An error occurred while processing the bulk reward. Please try again.")
 
     @commands.command(aliases=['give'])
+    @commands.is_owner() # temp disable because people are bad
     async def givepoints(self, ctx: commands.Context, user: discord.Member, amount: int):
         """Give some of your points to another user
         
@@ -829,7 +830,7 @@ class Points(commands.Cog):
             player_stats = await self.db.get_match_players(matchid)
             for player in player_stats:
                 points_earned = 1000
-                points_earned += 250 if player['team_name'] == winning_team else 0
+                points_earned += 750 if player['team_name'] == winning_team else 0
                 points_earned += int(player['kills']) * 10
                 points_earned += int(player['damage']) // 10
 
