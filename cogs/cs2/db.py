@@ -290,8 +290,14 @@ class CS2PostgresDb:
         rows = await self.pool.fetch(query, match_id)
         return [dict(row) for row in rows]
 
-    async def get_player_winrates(self) -> List[Dict[str, Any]]:
-        """Calculate win/loss records for all players, grouped by steamid64."""
+    async def get_player_winrates(self, all_time: bool = False) -> List[Dict[str, Any]]:
+        """Calculate win/loss records for all players, grouped by steamid64.
+
+        Args:
+            all_time: If True, query all matches. If False, only query current month's matches.
+        """
+        date_filter = "" if all_time else "WHERE m.start_time >= DATE_TRUNC('month', CURRENT_TIMESTAMP) + INTERVAL '12 hours'"
+
         query = f"""
             WITH player_matches AS (
                 SELECT
@@ -304,6 +310,7 @@ class CS2PostgresDb:
                     END as is_win
                 FROM {self.CS2_PLAYER_STATS} ps
                 JOIN {self.CS2_MATCHES} m ON ps.matchid = m.matchid
+                {date_filter}
             ),
             player_stats AS (
                 SELECT
@@ -337,8 +344,14 @@ class CS2PostgresDb:
         rows = await self.pool.fetch(query)
         return [dict(row) for row in rows]
 
-    async def get_comprehensive_player_stats(self) -> List[Dict[str, Any]]:
-        """Get comprehensive statistics for all players, grouped by steamid64."""
+    async def get_comprehensive_player_stats(self, all_time: bool = False) -> List[Dict[str, Any]]:
+        """Get comprehensive statistics for all players, grouped by steamid64.
+
+        Args:
+            all_time: If True, query all matches. If False, only query current month's matches.
+        """
+        date_filter = "" if all_time else "WHERE m.start_time >= DATE_TRUNC('month', CURRENT_TIMESTAMP) + INTERVAL '12 hours'"
+
         query = f"""
             WITH player_matches AS (
                 SELECT
@@ -366,6 +379,7 @@ class CS2PostgresDb:
                     (m.team1_score + m.team2_score) as total_rounds
                 FROM {self.CS2_PLAYER_STATS} ps
                 JOIN {self.CS2_MATCHES} m ON ps.matchid = m.matchid
+                {date_filter}
             ),
             player_stats AS (
                 SELECT
@@ -475,8 +489,8 @@ class CS2PostgresDb:
         Returns:
             Dictionary containing team ADRs and odds
         """
-        # Get player stats for ADR calculation
-        all_stats = await self.get_comprehensive_player_stats()
+        # Get player stats for ADR calculation - always use all-time data for odds
+        all_stats = await self.get_comprehensive_player_stats(all_time=True)
         steamid_adr_map = {stats['steamid64']: float(stats['avg_damage_per_round']) for stats in all_stats}
 
         # Calculate average ADR across players with 5+ matches

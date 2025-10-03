@@ -503,10 +503,16 @@ class CS2(commands.Cog):
             await ctx.send(f"❌ Error testing odds: {e}")
 
     @commands.command()
-    async def winrate(self, ctx: commands.Context):
-        """Display win/loss records for all CS2 players"""
+    async def winrate(self, ctx: commands.Context, timeframe: str = "month"):
+        """Display win/loss records for all CS2 players
+
+        Usage: !winrate [timeframe]
+        - month (default): Shows stats for current month only
+        - alltime: Shows all-time stats
+        """
+        all_time = timeframe.lower() == "alltime"
         try:
-            player_records = await self.postgres_db.get_player_winrates()
+            player_records = await self.postgres_db.get_player_winrates(all_time=all_time)
 
             if not player_records:
                 await ctx.send("No CS2 match data found.")
@@ -581,24 +587,31 @@ class CS2(commands.Cog):
 
     @commands.command()
     @commands.is_owner()
-    async def cs2playerstats(self, ctx: commands.Context, view: str = "standard"):
+    async def cs2playerstats(self, ctx: commands.Context, view: str = "standard", timeframe: str = "month"):
         """Display CS2 player statistics summary table
 
-        Usage: !cs2playerstats [view]
-        - standard (default): Shows ADR, K/D, WR%, Matches
-        - detailed: Shows HS%, V1%, Ent%, Flash%, Util Dmg, Matches
+        Usage: !cs2playerstats [view] [timeframe]
+        - view: standard (default) or detailed
+        - timeframe: month (default) or alltime
+
+        Examples:
+        - !cs2playerstats
+        - !cs2playerstats detailed
+        - !cs2playerstats standard alltime
+        - !cs2playerstats detailed alltime
         """
+        all_time = timeframe.lower() == "alltime"
         try:
-            player_stats = await self.postgres_db.get_comprehensive_player_stats()
+            player_stats = await self.postgres_db.get_comprehensive_player_stats(all_time=all_time)
 
             if not player_stats:
                 await ctx.send("No CS2 match data found.")
                 return
 
             if view.lower() == "detailed":
-                await self._send_detailed_stats_table(ctx, player_stats)
+                await self._send_detailed_stats_table(ctx, player_stats, all_time)
             else:
-                await self._send_summary_stats_table(ctx, player_stats)
+                await self._send_summary_stats_table(ctx, player_stats, all_time)
 
         except Exception as e:
             log.error(f"Error in cs2playerstats command: {e}")
