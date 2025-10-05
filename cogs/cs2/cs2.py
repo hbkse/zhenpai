@@ -128,7 +128,6 @@ class CS2(commands.Cog):
                 last_match_id = await self.mysql_db.get_latest_match_id()
                 next_match_id = last_match_id + 1
 
-                # Create LiveMatchView (match_id will be updated when match starts)
                 live_view = LiveMatchView(
                     match_id=next_match_id,
                     image_url=image_url,
@@ -162,10 +161,9 @@ class CS2(commands.Cog):
         try:
             log.info(f"Starting live match polling for {tracking_id}")
 
-            # Poll for new match creation
+            # Poll for next match to be created (.start)
             while tracking_id in self.live_messages:
                 await asyncio.sleep(2)
-                # waiting for live_view.match_id to match latest match id
 
                 latest_match_id = await self.mysql_db.get_latest_match_id()
                 if latest_match_id == live_view.match_id:
@@ -191,7 +189,7 @@ class CS2(commands.Cog):
         """Poll match scores and update the LiveMatchView. Handles premature match endings by switching to newer matches."""
         try:
             log.info(f"Starting score polling for match {initial_match_id}")
-            message = self.live_messages.get(tracking_id)
+            message : discord.Message = self.live_messages.get(tracking_id)
             if not message:
                 log.error(f"No message found for tracking ID {tracking_id}")
                 return
@@ -205,11 +203,13 @@ class CS2(commands.Cog):
                 await asyncio.sleep(5)
                 log.info(f"polling for match score updates for {current_match_id}")
 
-                # Check if there's a newer match that started, if so fuck my life
+                # Check if there's a newer match that started, this happens when people fk up and forceend and restart
                 latest_match_id = await self.mysql_db.get_latest_match_id()
                 if latest_match_id > current_match_id:
                     log.info(f"Newer match detected: {latest_match_id}, switching from {current_match_id}")
                     current_match_id = latest_match_id
+                    live_view.match_id = latest_match_id # this is a nightmare for bets that were created during this time
+
                     last_team1_score = 0  # Reset score tracking for new match
                     last_team2_score = 0
 
@@ -224,9 +224,10 @@ class CS2(commands.Cog):
                 team1_score = map_data.get('team1_score', 0) if map_data else 0
                 team2_score = map_data.get('team2_score', 0) if map_data else 0
 
-                # Lock betting once pistol round is over (i.e. either team has >0 score)
+                # Lock betting once pistol round is over
                 if not betting_locked and (team1_score > 0 or team2_score > 0):
                     live_view.lock_betting()
+                    live_view.stop() # there shouldn't be anymore input
                     betting_locked = True
                     log.info(f"Locked betting for match {current_match_id}")
 
@@ -237,7 +238,14 @@ class CS2(commands.Cog):
                     score_text = f"{winner} won! {team1_score} - {team2_score}"
                     live_view.update_score_text(score_text)
                     
-                    await message.edit(view=live_view)
+                    # delete old message and send new one to push to front of channel
+                    try:
+                        channel = message.channel
+                        await channel.send(view=live_view)
+                        await message.delete()
+                        log.info(f"Deleted old live tracking message for match {current_match_id}")
+                    except Exception as e:
+                        log.warning(f"Could not delete old live message: {e}")
                     break
 
                 # Only update if scores changed
