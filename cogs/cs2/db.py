@@ -2,7 +2,7 @@ import aiomysql
 import logging
 from typing import List, Dict, Any, Optional, Tuple
 import config
-from asyncpg import Pool
+from asyncpg import Pool, Connection
 
 log: logging.Logger = logging.getLogger(__name__)
 
@@ -189,6 +189,7 @@ class CS2PostgresDb:
             Exception: If the transaction fails, all operations are rolled back
         """
         async with self.pool.acquire() as conn:
+            conn: Connection
             async with conn.transaction():
                 match_query = f"""
                     INSERT INTO {self.CS2_MATCHES} (
@@ -551,3 +552,103 @@ class CS2PostgresDb:
             'team1_normalized_sum': team1_normalized_sum,
             'team2_normalized_sum': team2_normalized_sum
         }
+
+    async def insert_match_bet(
+        self,
+        cs_match_id: int,
+        user_id: int,
+        amount: int,
+        team_name: str,
+        odds: float
+    ) -> None:
+        """Insert a bet into the cs2_match_bets table."""
+        payout = int(amount * odds)
+        query = """
+            INSERT INTO cs2_match_bets (
+                cs_match_id, user_id, amount, team_name, odds, payout, active
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+        """
+        await self.pool.execute(query, cs_match_id, user_id, amount, team_name, odds, payout, True)
+
+    async def process_cs2_match_bets(self, cs_match_id: int, winning_team: str) -> None:
+        """
+        Process all bets for a completed match in a single transaction.
+
+        Args:
+            cs_match_id: The match ID to process bets for
+            winning_team: The name of the winning team
+        """
+        async with self.pool.acquire() as conn:
+            conn: Connection
+            async with conn.transaction():
+                # Get all bets for this match
+                bets_query = """
+                    SELECT * FROM cs2_match_bets
+                    WHERE cs_match_id = $1
+                """
+                bets = await conn.fetch(bets_query, cs_match_id)
+
+                # Check for inactive bets - this shouldn't happen
+                inactive_bets = [bet for bet in bets if not bet['active']]
+                if inactive_bets:
+                    log.warning(
+                        f"Found {len(inactive_bets)} inactive bets for match {cs_match_id}. "
+                        f"This indicates bets were already processed or manually deactivated."
+                    )
+
+                # Process only active bets
+                active_bets = [bet for bet in bets if bet['active']]
+
+                for bet in active_bets:
+                    # Determine if this bet won
+                    bet_won = bet['team_name'] == winning_team
+
+                    # Calculate points change
+                    if bet_won:
+                        # Winner gets payout
+                        points_change = bet['payout']
+                        reason = f"Won CS2 Bet {cs_match_id}"
+                    else:
+                        # Loser loses their bet amount
+                        points_change = -bet['amount']
+                        reason = f"Lost CS2 Bet {cs_match_id}"
+
+                    # Insert points record
+                    points_query = """
+                        INSERT INTO points (
+                            discord_id, change_value, category, reason,
+                            event_source, event_source_id
+                        ) VALUES ($1, $2, $3, $4, $5, $6)
+                    """
+                    await conn.execute(
+                        points_query,
+                        bet['user_id'],
+                        points_change,
+                        'cs2_bet',
+                        reason,
+                        'cs2_match_bets',
+                        bet['id']
+                    )
+
+                    # Mark bet as inactive
+                    update_bet_query = """
+                        UPDATE cs2_match_bets
+                        SET active = FALSE
+                        WHERE id = $1
+                    """
+                    await conn.execute(update_bet_query, bet['id'])
+
+                log.info(
+                    f"Processed {len(active_bets)} bets for match {cs_match_id}. "
+                    f"Winning team: {winning_team}"
+                )
+
+    async def get_all_user_points(self) -> Dict[int, int]:
+        """Get total points for all users."""
+        query = """
+            SELECT discord_id, SUM(change_value) as total_points
+            FROM points
+            GROUP BY discord_id
+        """
+        rows = await self.pool.fetch(query)
+        return {row['discord_id']: row['total_points'] for row in rows}
