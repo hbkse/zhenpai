@@ -17,18 +17,18 @@ class MakeBetModal(ui.Modal):
         self.user_points = user_points
         self.team_win_odds = team_win_odds
 
-        self.odds = (1 - team_win_odds) / team_win_odds
+        example_payout = int(1000 / team_win_odds)
+        example_profit = example_payout - 1000
+
         self.bet_explanation.content = (
             f"You have **{user_points} points**.\n"
-            f"Odds for this team are **1 : {self.odds:.2f}**.\n"
-            f"That means for every 1000 points you bet, you can win {self.odds * 1000:.0f} points."
+            f"This team has a **{team_win_odds * 100:.1f}% win chance**.\n"
+            f"For a 1000 point bet, you get back **{example_payout} points** if you win (profit: **{example_profit}**)."
         )
         super().__init__(title=f"Bet on {team_name}")
 
     async def on_submit(self, interaction: discord.Interaction, /) -> None:
         # validate bet amount
-        # TODO: there's a bug here where the user can bet multiple times to exceed their points, like leverage
-        # should check existing bets and use that to calculate their actual total 
         if self.bet_amount_text_input.value.isdigit() and int(self.bet_amount_text_input.value) > 0:
             bet_amount = int(self.bet_amount_text_input.value)
         else:
@@ -48,7 +48,7 @@ class MakeBetModal(ui.Modal):
                 user_id=interaction.user.id,
                 amount=bet_amount,
                 team_name=self.team_name,
-                odds=self.odds
+                odds=self.team_win_odds
             )
         except Exception as e:
             await interaction.response.send_message(f"Failed to record bet: {e}", ephemeral=True)
@@ -71,25 +71,32 @@ class LiveMatchButtons(ui.ActionRow):
 
     @ui.button(label='Bet Team 1', style=discord.ButtonStyle.primary)
     async def button_1(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        user_points = self.__view.user_points_dict.get(interaction.user.id, 0)
+        # Query user's current balance
+        db_pool = interaction.client.db_pool
+        db = CS2PostgresDb(db_pool)
+        user_points = await db.get_user_balance(interaction.user.id)
+
         team_name = self.__view.team_names[0]
         team_win_odds = self.__view.team_win_odds[0]
         await interaction.response.send_modal(MakeBetModal(self.__view, team_name=team_name, user_points=user_points, team_win_odds=team_win_odds))
 
     @ui.button(label='Bet Team 2', style=discord.ButtonStyle.primary)
     async def button_2(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        user_points = self.__view.user_points_dict.get(interaction.user.id, 0)
+        # Query user's current balance
+        db_pool = interaction.client.db_pool
+        db = CS2PostgresDb(db_pool)
+        user_points = await db.get_user_balance(interaction.user.id)
+
         team_name = self.__view.team_names[1]
         team_win_odds = self.__view.team_win_odds[1]
         await interaction.response.send_modal(MakeBetModal(self.__view, team_name=team_name, user_points=user_points, team_win_odds=team_win_odds))
 
 
 class LiveMatchView(ui.LayoutView):
-    def __init__(self, *, match_id: int, image_url: str, team_names: tuple[str, str], team_win_odds: tuple, user_points_dict: dict) -> None:
+    def __init__(self, *, match_id: int, image_url: str, team_names: tuple[str, str], team_win_odds: tuple) -> None:
         self.match_id = match_id
         self.team_names = team_names  # (team1_name, team2_name)
         self.team_win_odds = team_win_odds # (team1_win_odds, team2_win_odds)
-        self.user_points_dict = user_points_dict
         super().__init__()
 
         # Image section

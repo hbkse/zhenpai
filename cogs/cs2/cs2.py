@@ -128,9 +128,6 @@ class CS2(commands.Cog):
                         log.warning(f"Failed to fetch from {GUELO_TEAMS_JSON_URL} guelo teams json: {resp.status}")
                         log.warning("can't do shit without team data")
 
-                # Fetch this data before sending message, so that it's cached for button interactions
-                user_points_dict = await self.postgres_db.get_all_user_points()
-
                 # get the next match id that will be created
                 last_match_id = await self.mysql_db.get_latest_match_id()
                 next_match_id = last_match_id + 1
@@ -139,8 +136,7 @@ class CS2(commands.Cog):
                     match_id=next_match_id,
                     image_url=image_url,
                     team_names=team_names,
-                    team_win_odds=team_win_odds,
-                    user_points_dict=user_points_dict
+                    team_win_odds=team_win_odds
                 )
 
                 message = await channel.send(view=live_view)

@@ -561,14 +561,53 @@ class CS2PostgresDb:
         team_name: str,
         odds: float
     ) -> None:
-        """Insert a bet into the cs2_match_bets table."""
-        payout = int(amount * odds)
-        query = """
-            INSERT INTO cs2_match_bets (
-                cs_match_id, user_id, amount, team_name, odds, payout, active
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7)
         """
-        await self.pool.execute(query, cs_match_id, user_id, amount, team_name, odds, payout, True)
+        Insert a bet into the cs2_match_bets table and subtract points from user's balance.
+        This happens in a transaction so both operations succeed or fail together.
+        Payout is calculated as: amount / win_probability (e.g., 1000 / 0.55 = 1818)
+        """
+        payout = int(amount / odds)
+
+        async with self.pool.acquire() as conn:
+            async with conn.transaction():
+                # Insert the bet
+                bet_query = """
+                    INSERT INTO cs2_match_bets (
+                        cs_match_id, user_id, amount, team_name, odds, payout, active
+                    ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+                    RETURNING id
+                """
+                bet_id = await conn.fetchval(bet_query, cs_match_id, user_id, amount, team_name, odds, payout, True)
+
+                # Insert points transaction (negative for bet placement)
+                points_query = """
+                    INSERT INTO points (
+                        discord_id, change_value, category, reason,
+                        event_source, event_source_id
+                    ) VALUES ($1, $2, $3, $4, $5, $6)
+                    RETURNING id
+                """
+                points_id = await conn.fetchval(
+                    points_query,
+                    user_id,
+                    -amount,  # Negative because we're subtracting
+                    'cs2_bet',
+                    f'Placed bet on {team_name} for match {cs_match_id}',
+                    'cs2_match_bets',
+                    bet_id
+                )
+
+                # Update point_balances
+                balance_query = """
+                    INSERT INTO point_balances (discord_id, current_balance, last_transaction_id, last_updated)
+                    VALUES ($1, $2, $3, NOW())
+                    ON CONFLICT (discord_id)
+                    DO UPDATE SET
+                        current_balance = point_balances.current_balance + $2,
+                        last_transaction_id = $3,
+                        last_updated = NOW()
+                """
+                await conn.execute(balance_query, user_id, -amount, points_id)
 
     async def process_cs2_match_bets(self, cs_match_id: int, winning_team: str) -> None:
         """
@@ -603,34 +642,41 @@ class CS2PostgresDb:
                     # Determine if this bet won
                     bet_won = bet['team_name'] == winning_team
 
-                    # Calculate points change
+                    # Only process winnings - losses were already deducted when bet was placed
                     if bet_won:
                         # Winner gets payout
                         points_change = bet['payout']
                         reason = f"Won CS2 Bet {cs_match_id}"
-                    else:
-                        # Loser loses their bet amount
-                        points_change = -bet['amount']
-                        reason = f"Lost CS2 Bet {cs_match_id}"
 
-                    # Insert points record
-                    points_query = """
-                        INSERT INTO points (
-                            discord_id, change_value, category, reason,
-                            event_source, event_source_id
-                        ) VALUES ($1, $2, $3, $4, $5, $6)
-                    """
-                    await conn.execute(
-                        points_query,
-                        bet['user_id'],
-                        points_change,
-                        'cs2_bet',
-                        reason,
-                        'cs2_match_bets',
-                        bet['id']
-                    )
+                        # Insert points record
+                        points_query = """
+                            INSERT INTO points (
+                                discord_id, change_value, category, reason,
+                                event_source, event_source_id
+                            ) VALUES ($1, $2, $3, $4, $5, $6)
+                            RETURNING id
+                        """
+                        points_id = await conn.fetchval(
+                            points_query,
+                            bet['user_id'],
+                            points_change,
+                            'cs2_bet',
+                            reason,
+                            'cs2_match_bets',
+                            bet['id']
+                        )
 
-                    # Mark bet as inactive
+                        # Update point_balances
+                        balance_query = """
+                            UPDATE point_balances
+                            SET current_balance = current_balance + $1,
+                                last_transaction_id = $2,
+                                last_updated = NOW()
+                            WHERE discord_id = $3
+                        """
+                        await conn.execute(balance_query, points_change, points_id, bet['user_id'])
+
+                    # Mark bet as inactive (both winning and losing bets)
                     update_bet_query = """
                         UPDATE cs2_match_bets
                         SET active = FALSE
@@ -643,12 +689,12 @@ class CS2PostgresDb:
                     f"Winning team: {winning_team}"
                 )
 
-    async def get_all_user_points(self) -> Dict[int, int]:
-        """Get total points for all users."""
+    async def get_user_balance(self, user_id: int) -> int:
+        """Get current point balance for a specific user."""
         query = """
-            SELECT discord_id, SUM(change_value) as total_points
-            FROM points
-            GROUP BY discord_id
+            SELECT current_balance
+            FROM point_balances
+            WHERE discord_id = $1
         """
-        rows = await self.pool.fetch(query)
-        return {row['discord_id']: row['total_points'] for row in rows}
+        result = await self.pool.fetchval(query, user_id)
+        return result if result is not None else 0
