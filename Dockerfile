@@ -8,6 +8,9 @@ ARG COMMIT_HASH
 
 WORKDIR /opt/app
 
+# Install git for discord.py installation from GitHub
+RUN apt-get update && apt-get install -y git && rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
