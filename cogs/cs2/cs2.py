@@ -8,7 +8,7 @@ from discord.ext import commands, tasks
 from typing import List, Dict, Any, Optional, Tuple
 from bot import Zhenpai
 from .db import CS2MySQLDb, CS2PostgresDb
-from .live_view import LiveView, TestView
+from .views import LiveMatchView
 
 log: logging.Logger = logging.getLogger(__name__)
 
@@ -83,63 +83,60 @@ class CS2(commands.Cog):
             
             channel = self.bot.get_channel(LIVE_MATCH_CHANNEL_ID)
             if channel:
-                # Create embed with image as the center piece
-                embed = discord.Embed(title="Inhouse starting soon!", color=discord.Color.yellow())
-                
-                if image_url:
-                    embed.set_image(url=image_url)
-                else:
+                if not image_url:
                     log.warning("didn't get image_url")
 
-                # Initialize variables for odds calculation
+                # Initialize variables
                 team1_steamids = []
                 team2_steamids = []
-                odds_footer = ""
+                team_win_odds = None
 
                 async with self.bot.http_client.get(GUELO_TEAMS_JSON_URL) as resp:
                     if resp.status == 200:
                         data = await resp.json()
 
-                        # Extract steamids from team data and calculate odds once
+                        # Extract steamids from team data and calculate odds
                         try:
-                            # Extract steamids from team data - players are keys in the players dict
                             if 'team1' in data and 'players' in data['team1']:
                                 team1_players = data['team1']['players']
                                 if isinstance(team1_players, dict):
                                     team1_steamids = [int(steamid64) for steamid64 in team1_players.keys() if steamid64.isdigit()]
-                                else:
-                                    team1_steamids = []
 
                             if 'team2' in data and 'players' in data['team2']:
                                 team2_players = data['team2']['players']
                                 if isinstance(team2_players, dict):
                                     team2_steamids = [int(steamid64) for steamid64 in team2_players.keys() if steamid64.isdigit()]
-                                else:
-                                    team2_steamids = []
 
-                            # Calculate odds once if we have enough players
-                            if len(team1_steamids) > 0 and len(team2_steamids) > 0:
+                            # Calculate odds if we have enough players
+                            if len(team1_steamids) == 5 and len(team2_steamids) == 5:
                                 odds_data = await self.postgres_db.calculate_team_odds(team1_steamids, team2_steamids)
-                                team1_name = data.get('team1', {}).get('name', 'Team 1')
-                                team2_name = data.get('team2', {}).get('name', 'Team 2')
-
-                                # Create detailed odds text for the field
-                                odds_text = f"\n📊 **Match Odds**\n"
-                                odds_text += f"{team1_name}: {odds_data['team1_odds']:.2f}%\n"
-                                odds_text += f"{team2_name}: {odds_data['team2_odds']:.2f}%"
-                                embed.add_field(name="🎯 Predicted Odds", value=odds_text, inline=False)
-
-                                # Create compact odds text for footer use in live updates
-                                odds_footer = f"{team1_name} {odds_data['team1_odds']:.2f}% vs {team2_name} {odds_data['team2_odds']:.2f}%"
+                                team_win_odds = (odds_data['team1_odds'] / 100.0, odds_data['team2_odds'] / 100.0)
+                            else:
+                                log.warning("Not enough players to calculate odds, defaulting to 50/50")
+                                team_win_odds = (0.5, 0.5)
                         except Exception as e:
                             log.warning(f"Could not calculate odds: {e}")
-
-                        embed.set_footer(text="Work in progress to bet points from this embed!")
-
-                        message = await channel.send(embed=embed)
                     else:
                         log.warning(f"Failed to fetch from {GUELO_TEAMS_JSON_URL} guelo teams json: {resp.status}")
-                        message = await channel.send(embed=embed)
+                        log.warning("Cannot generate odds without team data")
+                        # team_win_odds = (0.5, 0.5) 
+                
+                # Fetch this data before sending message, so that it's cached for button interactions
+                user_points_dict = await self.postgres_db.get_all_user_points()
+
+                # get the next match id that will be created
+                last_match_id = await self.mysql_db.get_latest_match_id()
+                next_match_id = last_match_id + 1
+
+                # Create LiveMatchView (match_id will be updated when match starts)
+                live_view = LiveMatchView(
+                    match_id=next_match_id,
+                    image_url=image_url,
+                    team_win_odds=team_win_odds,
+                    user_points_dict=user_points_dict
+                )
+
+                message = await channel.send(view=live_view)
 
                 # Cancel any existing tasks, just assume there's only ever 1 live match for now
                 for task_id, task in self.live_tracking_tasks.items():
@@ -151,7 +148,7 @@ class CS2(commands.Cog):
                 tracking_id = f"live_{datetime.now().timestamp()}"
                 self.live_messages[tracking_id] = message
 
-                task = asyncio.create_task(self.poll_live_match(tracking_id, image_url, odds_footer))
+                task = asyncio.create_task(self.poll_live_match(tracking_id, live_view))
                 self.live_tracking_tasks[tracking_id] = task
                 log.info(f"Started live tracking task: {tracking_id}")
 
@@ -160,24 +157,28 @@ class CS2(commands.Cog):
             print(f"Discord action error: {e}")
             return web.Response(text='Error', status=500)
         
-    async def poll_live_match(self, tracking_id: str, image_url: str, odds_footer: str):
+    async def poll_live_match(self, tracking_id: str, live_view: 'LiveMatchView'):
         """Poll for new matches and start score tracking when found."""
         try:
             log.info(f"Starting live match polling for {tracking_id}")
-            last_match_id = await self.mysql_db.get_latest_match_id()
-            log.info(f"Current latest match ID {last_match_id}, now waiting for new match to be created")
 
             # Poll for new match creation
             while tracking_id in self.live_messages:
                 await asyncio.sleep(2)
-                log.info(f"polling for new matchzy match to be created after {last_match_id}")
+                # waiting for live_view.match_id to match latest match id
 
                 latest_match_id = await self.mysql_db.get_latest_match_id()
-                if latest_match_id > last_match_id:
-                    log.info(f"New match detected: {latest_match_id}")
-                    await self.poll_match_scores(tracking_id, latest_match_id, image_url, odds_footer)
+                if latest_match_id == live_view.match_id:
+                    log.info(f"New match has started: {latest_match_id}")
+                    live_view.container.accent_color = discord.Color.green()
+                    await self.poll_match_scores(tracking_id, latest_match_id, live_view)
                     break
-                    
+                elif latest_match_id > live_view.match_id:
+                    log.info(f"Match ID jumped ahead from {live_view.match_id} to {latest_match_id}, updating")
+                    log.info("Bets placed during this time might be broken LOL")
+                    live_view.match_id = latest_match_id
+                    await self.poll_match_scores(tracking_id, latest_match_id, live_view)
+
         except Exception as e:
             log.error(f"Error in live match polling {tracking_id}: {e}")
         finally:
@@ -186,24 +187,25 @@ class CS2(commands.Cog):
             if tracking_id in self.live_messages:
                 del self.live_messages[tracking_id]
     
-    async def poll_match_scores(self, tracking_id: str, initial_match_id: int, image_url: str, odds_footer: str):
-        """Poll match scores and update the Discord embed. Handles premature match endings by switching to newer matches."""
+    async def poll_match_scores(self, tracking_id: str, initial_match_id: int, live_view: 'LiveMatchView'):
+        """Poll match scores and update the LiveMatchView. Handles premature match endings by switching to newer matches."""
         try:
             log.info(f"Starting score polling for match {initial_match_id}")
             message = self.live_messages.get(tracking_id)
             if not message:
                 log.error(f"No message found for tracking ID {tracking_id}")
                 return
-            
+
             current_match_id = initial_match_id
             last_team1_score = -1
             last_team2_score = -1
-            
+            betting_locked = False
+
             while tracking_id in self.live_messages:
                 await asyncio.sleep(5)
                 log.info(f"polling for match score updates for {current_match_id}")
 
-                # Check if there's a newer match that started
+                # Check if there's a newer match that started, if so fuck my life
                 latest_match_id = await self.mysql_db.get_latest_match_id()
                 if latest_match_id > current_match_id:
                     log.info(f"Newer match detected: {latest_match_id}, switching from {current_match_id}")
@@ -218,62 +220,36 @@ class CS2(commands.Cog):
                     log.warning(f"No match data found for match ID {current_match_id}")
                     log.warning(f"map data: {map_data}")
                     continue
-                
+
                 team1_score = map_data.get('team1_score', 0) if map_data else 0
                 team2_score = map_data.get('team2_score', 0) if map_data else 0
-                
+
+                # Lock betting once pistol round is over (i.e. either team has >0 score)
+                if not betting_locked and (team1_score > 0 or team2_score > 0):
+                    live_view.lock_betting()
+                    betting_locked = True
+                    log.info(f"Locked betting for match {current_match_id}")
+
                 # Check if match is complete
                 if map_data and self._check_if_complete_match(map_data, match_data):
                     log.info(f"Match {current_match_id} completed")
-
-                    # Create new completion message
-                    completion_embed = discord.Embed(title="✅ Match Completed", color=discord.Color.green())
-
-                    if image_url:
-                        completion_embed.set_image(url=image_url)
-
-                    completion_embed.add_field(name="🏆 Final Score", value=f"{team1_score} - {team2_score}", inline=True)
                     winner = match_data.get('team1_name') if team1_score > team2_score else match_data.get('team2_name')
-                    completion_embed.add_field(name="👑 Winner", value=winner or 'Unknown', inline=True)
-
-                    # Add odds to footer if available
-                    footer_text = "Match completed"
-                    if odds_footer:
-                        footer_text += f" • Pre-match odds: {odds_footer}"
-                    completion_embed.set_footer(text=footer_text)
-
-                    # Post new completion message and delete old live message
-                    channel = message.channel
-                    await channel.send(embed=completion_embed)
-
-                    try:
-                        await message.delete()
-                        log.info(f"Deleted old live tracking message for match {current_match_id}")
-                    except Exception as e:
-                        log.warning(f"Could not delete old live message: {e}")
-
-                    # TODO: Resolve bets here
+                    score_text = f"{winner} won! {team1_score} - {team2_score}"
+                    live_view.update_score_text(score_text)
+                    
+                    await message.edit(view=live_view)
                     break
 
                 # Only update if scores changed
                 if team1_score != last_team1_score or team2_score != last_team2_score:
-                    embed = discord.Embed(title=f"Live Match Score: {team1_score} - {team2_score}", color=discord.Color.green())
-
-                    if image_url:
-                        embed.set_image(url=image_url)
-
-                    # Add odds to footer if available
-                    footer_text = "Live match in progress"
-                    if odds_footer:
-                        footer_text += f" • Odds: {odds_footer}"
-                    embed.set_footer(text=footer_text)
-
-                    await message.edit(embed=embed)
+                    score_text = f"Live Match Score: {team1_score} - {team2_score}"
+                    live_view.update_score_text(score_text)
+                    await message.edit(view=live_view)
                     log.info(f"Updated scores for match {current_match_id}: {team1_score}-{team2_score}")
 
                     last_team1_score = team1_score
                     last_team2_score = team2_score
-                    
+
         except Exception as e:
             log.error(f"Error in score polling for match {current_match_id}: {e}")
         finally:
@@ -362,7 +338,10 @@ class CS2(commands.Cog):
                         log.warning(f"Not 10 players for {matchid}")
 
                     await self.postgres_db.process_matchzy_data_transaction(match_data, match_players)
-                    
+
+                    # Process bets for this completed match
+                    await self.postgres_db.process_cs2_match_bets(matchid, match_data['winner'])
+
                     processed_count += 1
                     
                 except Exception as e:
@@ -692,3 +671,11 @@ class CS2(commands.Cog):
         embed.set_footer(text="HS%=Headshot%, V1%=1v1 Clutch%, Ent%=Entry%, Fl%=Flash%, UD=Utility Damage")
 
         await ctx.send(embed=embed)
+
+    @commands.command()
+    async def testview(self, ctx: commands.Context):
+        url = "https://media.discordapp.net/attachments/917784516284809288/1035047897223409734/unknown.png?ex=68e29d38&is=68e14bb8&hm=f94013a6b23881b26288757371ba91212afee26401d574e17745336270ef2cb5&=&format=webp&quality=lossless&width=2398&height=1360"
+        test_points_dict = {
+            118956121913425920: 1234456,
+        }
+        await ctx.send(view=LiveMatchView(match_id=12345, image_url=url, team_win_odds=(0.45, 0.55), user_points_dict=test_points_dict))

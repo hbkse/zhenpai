@@ -101,35 +101,5 @@ class Admin(commands.Cog):
         commands = await self.bot.tree.sync(guild=None)
         await ctx.send(f'Successfully synced {len(commands)} commands')
 
-    @commands.command(hidden=True)
-    @commands.is_owner()
-    async def drop_table(self, ctx: commands.Context, table_name: str):
-        """Drop all data from a specified table."""
-        try:
-            # Validate table name to prevent SQL injection
-            allowed_tables = {
-                'cs2_matches', 'cs2_player_stats', 'users', 'points', 'processed_events'
-            }
-            
-            if table_name.lower() not in allowed_tables:
-                await ctx.send(f"❌ Table '{table_name}' is not in the allowed list. Allowed tables: {', '.join(allowed_tables)}")
-                return
-            
-            # Get the database pool from the bot
-            if not hasattr(self.bot, 'db_pool') or not self.bot.db_pool:
-                await ctx.send("❌ Database pool not available.")
-                return
-            
-            # Delete all records from the specified table
-            query = f"DELETE FROM {table_name}"
-            await self.bot.db_pool.execute(query)
-            
-            await ctx.send(f"✅ Successfully dropped all data from {table_name} table.")
-            log.info(f"Admin {ctx.author} dropped all data from {table_name} table")
-            
-        except Exception as e:
-            await ctx.send(f"❌ Error dropping data from {table_name}: {e}")
-            log.error(f"Error dropping data from {table_name}: {e}")
-
 async def setup(bot: Zhenpai):
     await bot.add_cog(Admin(bot))
