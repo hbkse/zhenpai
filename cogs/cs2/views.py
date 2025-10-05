@@ -17,11 +17,11 @@ class MakeBetModal(ui.Modal):
         self.user_points = user_points
         self.team_win_odds = team_win_odds
 
-        odds = (1 - team_win_odds) / team_win_odds
+        self.odds = (1 - team_win_odds) / team_win_odds
         self.bet_explanation.content = (
             f"You have **{user_points} points**.\n"
-            f"Odds for this team are **1 : {odds:.2f}**.\n"
-            f"That means for every 1000 points you bet, you can win {odds * 1000:.0f} points."
+            f"Odds for this team are **1 : {self.odds:.2f}**.\n"
+            f"That means for every 1000 points you bet, you can win {self.odds * 1000:.0f} points."
         )
         super().__init__(title=f"Bet on {team_name}")
 
@@ -48,7 +48,7 @@ class MakeBetModal(ui.Modal):
                 user_id=interaction.user.id,
                 amount=bet_amount,
                 team_name=self.team_name,
-                odds=self.team_win_odds
+                odds=self.odds
             )
         except Exception as e:
             await interaction.response.send_message(f"Failed to record bet: {e}", ephemeral=True)
@@ -72,19 +72,22 @@ class LiveMatchButtons(ui.ActionRow):
     @ui.button(label='Bet Team 1', style=discord.ButtonStyle.primary)
     async def button_1(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         user_points = self.__view.user_points_dict.get(interaction.user.id, 0)
+        team_name = self.__view.team_names[0]
         team_win_odds = self.__view.team_win_odds[0]
-        await interaction.response.send_modal(MakeBetModal(self.__view, team_name="Team 1", user_points=user_points, team_win_odds=team_win_odds))
+        await interaction.response.send_modal(MakeBetModal(self.__view, team_name=team_name, user_points=user_points, team_win_odds=team_win_odds))
 
     @ui.button(label='Bet Team 2', style=discord.ButtonStyle.primary)
     async def button_2(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         user_points = self.__view.user_points_dict.get(interaction.user.id, 0)
+        team_name = self.__view.team_names[1]
         team_win_odds = self.__view.team_win_odds[1]
-        await interaction.response.send_modal(MakeBetModal(self.__view, team_name="Team 2", user_points=user_points, team_win_odds=team_win_odds))
+        await interaction.response.send_modal(MakeBetModal(self.__view, team_name=team_name, user_points=user_points, team_win_odds=team_win_odds))
 
 
 class LiveMatchView(ui.LayoutView):
-    def __init__(self, *, match_id: int, image_url: str, team_win_odds: tuple, user_points_dict: dict) -> None:
+    def __init__(self, *, match_id: int, image_url: str, team_names: tuple[str, str], team_win_odds: tuple, user_points_dict: dict) -> None:
         self.match_id = match_id
+        self.team_names = team_names  # (team1_name, team2_name)
         self.team_win_odds = team_win_odds # (team1_win_odds, team2_win_odds)
         self.user_points_dict = user_points_dict
         super().__init__()
@@ -95,7 +98,7 @@ class LiveMatchView(ui.LayoutView):
 
         # Text
         self.score_text = ui.TextDisplay("# Inhouse starting soon!")
-        self.odds_text = ui.TextDisplay(f"Win Odds:\nTeam 1 - {team_win_odds[0] * 100:.2f}%\nTeam 2 - {team_win_odds[1] * 100:.2f}%")
+        self.odds_text = ui.TextDisplay(f"Win Odds:\n{team_names[0]} - {team_win_odds[0] * 100:.2f}%\n{team_names[1]} - {team_win_odds[1] * 100:.2f}%")
         self.bets_text = ui.TextDisplay("No bets placed yet.")
 
         # Buttons

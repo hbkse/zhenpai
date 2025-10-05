@@ -90,22 +90,30 @@ class CS2(commands.Cog):
                 team1_steamids = []
                 team2_steamids = []
                 team_win_odds = None
+                team_names = None
 
                 async with self.bot.http_client.get(GUELO_TEAMS_JSON_URL) as resp:
                     if resp.status == 200:
                         data = await resp.json()
 
-                        # Extract steamids from team data and calculate odds
+                        # Extract team names and steamids from team data
                         try:
-                            if 'team1' in data and 'players' in data['team1']:
+                            if 'team1' in data and 'players' in data['team1'] and 'name' in data['team1']:
+                                team1_name = data['team1']['name']
                                 team1_players = data['team1']['players']
                                 if isinstance(team1_players, dict):
                                     team1_steamids = [int(steamid64) for steamid64 in team1_players.keys() if steamid64.isdigit()]
+                            else:
+                                log.warning("No team1 players found in data")
 
-                            if 'team2' in data and 'players' in data['team2']:
+                            if 'team2' in data and 'players' in data['team2'] and 'name' in data['team2']:
+                                team2_name = data['team2']['name']
                                 team2_players = data['team2']['players']
                                 if isinstance(team2_players, dict):
                                     team2_steamids = [int(steamid64) for steamid64 in team2_players.keys() if steamid64.isdigit()]
+                            else:
+                                log.warning("No team2 players found in data")
+                            team_names = (team1_name, team2_name)
 
                             # Calculate odds if we have enough players
                             if len(team1_steamids) == 5 and len(team2_steamids) == 5:
@@ -118,9 +126,8 @@ class CS2(commands.Cog):
                             log.warning(f"Could not calculate odds: {e}")
                     else:
                         log.warning(f"Failed to fetch from {GUELO_TEAMS_JSON_URL} guelo teams json: {resp.status}")
-                        log.warning("Cannot generate odds without team data")
-                        # team_win_odds = (0.5, 0.5) 
-                
+                        log.warning("can't do shit without team data")
+
                 # Fetch this data before sending message, so that it's cached for button interactions
                 user_points_dict = await self.postgres_db.get_all_user_points()
 
@@ -131,6 +138,7 @@ class CS2(commands.Cog):
                 live_view = LiveMatchView(
                     match_id=next_match_id,
                     image_url=image_url,
+                    team_names=team_names,
                     team_win_odds=team_win_odds,
                     user_points_dict=user_points_dict
                 )
@@ -347,7 +355,7 @@ class CS2(commands.Cog):
 
                     await self.postgres_db.process_matchzy_data_transaction(match_data, match_players)
 
-                    # Process bets for this completed match
+                    # Process bets for this completed match, but should this be part of the loop in points.py?
                     await self.postgres_db.process_cs2_match_bets(matchid, match_data['winner'])
 
                     processed_count += 1
@@ -679,11 +687,3 @@ class CS2(commands.Cog):
         embed.set_footer(text="HS%=Headshot%, V1%=1v1 Clutch%, Ent%=Entry%, Fl%=Flash%, UD=Utility Damage")
 
         await ctx.send(embed=embed)
-
-    @commands.command()
-    async def testview(self, ctx: commands.Context):
-        url = "https://media.discordapp.net/attachments/917784516284809288/1035047897223409734/unknown.png?ex=68e29d38&is=68e14bb8&hm=f94013a6b23881b26288757371ba91212afee26401d574e17745336270ef2cb5&=&format=webp&quality=lossless&width=2398&height=1360"
-        test_points_dict = {
-            118956121913425920: 1234456,
-        }
-        await ctx.send(view=LiveMatchView(match_id=12345, image_url=url, team_win_odds=(0.45, 0.55), user_points_dict=test_points_dict))
