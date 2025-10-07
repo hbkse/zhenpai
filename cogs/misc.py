@@ -145,6 +145,11 @@ class Misc(commands.Cog):
         await ctx.send(f'The current datetime in {country_name} is: {formatted_time}')
 
     @commands.command()
+    async def pfp(self, ctx: commands.Context, user: discord.User):
+        """Get a user's profile picture."""
+        await ctx.send(user.display_avatar.url)
+
+    @commands.command()
     async def ben(self, ctx: commands.Context, *, content: str):
         """
         determines if ben is working or not given a day in the future
