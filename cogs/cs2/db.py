@@ -709,6 +709,20 @@ class CS2PostgresDb:
         rows = await self.pool.fetch(query, steamids)
         return [row['discord_id'] for row in rows]
 
+    async def get_all_match_bets(self, cs_match_id: int) -> List[Dict[str, Any]]:
+        """Get all bets (active and inactive) for a specific match with usernames."""
+        query = """
+            SELECT
+                b.*,
+                u.discord_username
+            FROM cs2_match_bets b
+            LEFT JOIN users u ON b.user_id = u.discord_id
+            WHERE b.cs_match_id = $1
+            ORDER BY b.id
+        """
+        rows = await self.pool.fetch(query, cs_match_id)
+        return [dict(row) for row in rows]
+
     async def refund_match_bets(self, cs_match_id: int) -> int:
         """
         Refund all active bets for a specific match.

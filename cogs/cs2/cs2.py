@@ -251,7 +251,26 @@ class CS2(commands.Cog):
                     winner = match_data.get('team1_name') if team1_score > team2_score else match_data.get('team2_name')
                     score_text = f"{winner} won! {team1_score} - {team2_score}"
                     live_view.update_score_text(score_text)
-                    
+
+                    # Update bets_text with payout/loss information
+                    try:
+                        all_bets = await self.postgres_db.get_all_match_bets(current_match_id)
+                        if all_bets:
+                            results_text = "**Match Results:**\n"
+                            for bet in all_bets:
+                                username = bet.get('discord_username') or f"User {bet['user_id']}"
+                                bet_won = bet['team_name'] == winner
+                                if bet_won:
+                                    profit = bet['payout'] - bet['amount']
+                                    results_text += f"{username}: Won **{profit}** points (bet {bet['amount']} on {bet['team_name']})\n"
+                                else:
+                                    results_text += f"{username}: Lost **{bet['amount']}** points (bet on {bet['team_name']})\n"
+                            live_view.bets_text.content = results_text
+                        else:
+                            live_view.bets_text.content = "No bets were placed on this match."
+                    except Exception as e:
+                        log.error(f"Error updating bet results: {e}")
+
                     # delete old message and send new one to push to front of channel
                     try:
                         channel = message.channel
@@ -714,8 +733,8 @@ class CS2(commands.Cog):
             if refunded_count == 0:
                 await ctx.send(f"No active bets found for match {match_id}.")
             else:
-                await ctx.send(f"✅ Successfully refunded {refunded_count} bet(s) for match {match_id}.")
+                await ctx.send(f"Successfully refunded {refunded_count} bet(s) for match {match_id}.")
 
         except Exception as e:
             log.error(f"Error refunding bets for match {match_id}: {e}")
-            await ctx.send(f"❌ Failed to refund bets for match {match_id}: {e}")
+            await ctx.send(f"Failed to refund bets for match {match_id}: {e}")

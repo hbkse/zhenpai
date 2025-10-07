@@ -74,6 +74,19 @@ class MakeBetModal(ui.Modal):
             await interaction.response.send_message(f"Failed to record bet: {e}", ephemeral=True)
             return
 
+        # update the bet totals
+        if self.team_index == 0:
+            self.__view.team1_total_bet += bet_amount
+        else:
+            self.__view.team2_total_bet += bet_amount
+
+        # update the bet totals display
+        self.__view.bet_totals_text.content = (
+            f"Total Bet:\n"
+            f"{self.__view.team_names[0]}: {self.__view.team1_total_bet} points\n"
+            f"{self.__view.team_names[1]}: {self.__view.team2_total_bet} points"
+        )
+
         # update the bets_text with the new bet
         if "No bets placed yet." in self.__view.bets_text.content:
             self.__view.bets_text.content = ""
@@ -118,6 +131,8 @@ class LiveMatchView(ui.LayoutView):
         self.team_names = team_names  # (team1_name, team2_name)
         self.team_win_odds = team_win_odds # (team1_win_odds, team2_win_odds)
         self.team_rosters = team_rosters  # (team1_discord_ids, team2_discord_ids)
+        self.team1_total_bet = 0  # Track total bet on team 1
+        self.team2_total_bet = 0  # Track total bet on team 2
         super().__init__()
 
         # Image section
@@ -127,6 +142,7 @@ class LiveMatchView(ui.LayoutView):
         # Text
         self.score_text = ui.TextDisplay("# Inhouse starting soon!")
         self.odds_text = ui.TextDisplay(f"Win Odds:\n{team_names[0]} - {team_win_odds[0] * 100:.2f}%\n{team_names[1]} - {team_win_odds[1] * 100:.2f}%")
+        self.bet_totals_text = ui.TextDisplay(f"Total Bet:\n{team_names[0]}: 0 points\n{team_names[1]}: 0 points")
         self.bets_text = ui.TextDisplay("No bets placed yet.")
 
         # Buttons
@@ -136,6 +152,7 @@ class LiveMatchView(ui.LayoutView):
             self.score_text,
             self.image_header,
             self.odds_text,
+            self.bet_totals_text,
             self.bets_text,
             self.buttons,
             accent_color=discord.Color.yellow()
