@@ -698,3 +698,75 @@ class CS2PostgresDb:
         """
         result = await self.pool.fetchval(query, user_id)
         return result if result is not None else 0
+
+    async def get_discord_ids_from_steamids(self, steamids: List[int]) -> List[int]:
+        """Convert a list of steamid64s to discord_ids."""
+        query = """
+            SELECT discord_id
+            FROM users
+            WHERE steamid64 = ANY($1)
+        """
+        rows = await self.pool.fetch(query, steamids)
+        return [row['discord_id'] for row in rows]
+
+    async def refund_match_bets(self, cs_match_id: int) -> int:
+        """
+        Refund all active bets for a specific match.
+        Returns the number of bets refunded.
+        """
+        async with self.pool.acquire() as conn:
+            async with conn.transaction():
+                # Get all active bets for this match
+                bets_query = """
+                    SELECT * FROM cs2_match_bets
+                    WHERE cs_match_id = $1 AND active = TRUE
+                """
+                bets = await conn.fetch(bets_query, cs_match_id)
+
+                if not bets:
+                    return 0
+
+                for bet in bets:
+                    # Refund the bet amount (not payout, just original bet)
+                    refund_amount = bet['amount']
+
+                    # Insert points record for refund
+                    points_query = """
+                        INSERT INTO points (
+                            discord_id, change_value, category, reason,
+                            event_source, event_source_id
+                        ) VALUES ($1, $2, $3, $4, $5, $6)
+                        RETURNING id
+                    """
+                    points_id = await conn.fetchval(
+                        points_query,
+                        bet['user_id'],
+                        refund_amount,
+                        'cs2_bet_refund',
+                        f'Refund for bet on match {cs_match_id}',
+                        'cs2_match_bets',
+                        bet['id']
+                    )
+
+                    # Update point_balances
+                    balance_query = """
+                        INSERT INTO point_balances (discord_id, current_balance, last_transaction_id, last_updated)
+                        VALUES ($1, $2, $3, NOW())
+                        ON CONFLICT (discord_id)
+                        DO UPDATE SET
+                            current_balance = point_balances.current_balance + $2,
+                            last_transaction_id = $3,
+                            last_updated = NOW()
+                    """
+                    await conn.execute(balance_query, bet['user_id'], refund_amount, points_id)
+
+                    # Mark bet as inactive
+                    update_bet_query = """
+                        UPDATE cs2_match_bets
+                        SET active = FALSE
+                        WHERE id = $1
+                    """
+                    await conn.execute(update_bet_query, bet['id'])
+
+                log.info(f"Refunded {len(bets)} bets for match {cs_match_id}")
+                return len(bets)

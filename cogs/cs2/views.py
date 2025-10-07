@@ -9,11 +9,12 @@ class MakeBetModal(ui.Modal):
     bet_explanation = ui.TextDisplay("")
     bet_amount_text_input = ui.TextInput(label='Bet Amount', style=discord.TextStyle.short)
 
-    def __init__(self, view: 'LiveMatchView', team_name: str, user_points: int, team_win_odds: float) -> None:
+    def __init__(self, view: 'LiveMatchView', team_name: str, team_index: int, user_points: int, team_win_odds: float) -> None:
         self.__view = view
         self.bet_amount_text_input.default = 0
 
         self.team_name = team_name
+        self.team_index = team_index  # 0 for team1, 1 for team2
         self.user_points = user_points
         self.team_win_odds = team_win_odds
 
@@ -38,6 +39,25 @@ class MakeBetModal(ui.Modal):
             await interaction.response.send_message(f"You cannot bet more points than you have. You have {self.user_points} points.", ephemeral=True)
             return
 
+        # Check if user is playing in the match
+        team1_roster, team2_roster = self.__view.team_rosters
+        user_on_team1 = interaction.user.id in team1_roster
+        user_on_team2 = interaction.user.id in team2_roster
+
+        # Prevent betting against your own team
+        if user_on_team1 and self.team_index == 1:
+            await interaction.response.send_message(
+                f"You cannot bet against your own team! You are playing on {self.__view.team_names[0]}.",
+                ephemeral=True
+            )
+            return
+        if user_on_team2 and self.team_index == 0:
+            await interaction.response.send_message(
+                f"You cannot bet against your own team! You are playing on {self.__view.team_names[1]}.",
+                ephemeral=True
+            )
+            return
+
         # record the bet in the database
         try:
             db_pool = interaction.client.db_pool
@@ -59,7 +79,7 @@ class MakeBetModal(ui.Modal):
             self.__view.bets_text.content = ""
         else:
             self.__view.bets_text.content += "\n"
-        self.__view.bets_text.content += f"{interaction.user.display_name} bets {self.bet_amount_text_input.value} points on {self.team_name}."
+        self.__view.bets_text.content += f"{interaction.user.display_name} bets **{self.bet_amount_text_input.value}** points on {self.team_name}."
         await interaction.response.edit_message(view=self.__view)
         self.stop()
 
@@ -78,7 +98,7 @@ class LiveMatchButtons(ui.ActionRow):
 
         team_name = self.__view.team_names[0]
         team_win_odds = self.__view.team_win_odds[0]
-        await interaction.response.send_modal(MakeBetModal(self.__view, team_name=team_name, user_points=user_points, team_win_odds=team_win_odds))
+        await interaction.response.send_modal(MakeBetModal(self.__view, team_name=team_name, team_index=0, user_points=user_points, team_win_odds=team_win_odds))
 
     @ui.button(label='Bet Team 2', style=discord.ButtonStyle.primary)
     async def button_2(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
@@ -89,14 +109,15 @@ class LiveMatchButtons(ui.ActionRow):
 
         team_name = self.__view.team_names[1]
         team_win_odds = self.__view.team_win_odds[1]
-        await interaction.response.send_modal(MakeBetModal(self.__view, team_name=team_name, user_points=user_points, team_win_odds=team_win_odds))
+        await interaction.response.send_modal(MakeBetModal(self.__view, team_name=team_name, team_index=1, user_points=user_points, team_win_odds=team_win_odds))
 
 
 class LiveMatchView(ui.LayoutView):
-    def __init__(self, *, match_id: int, image_url: str, team_names: tuple[str, str], team_win_odds: tuple) -> None:
+    def __init__(self, *, match_id: int, image_url: str, team_names: tuple[str, str], team_win_odds: tuple, team_rosters: tuple[list[int], list[int]]) -> None:
         self.match_id = match_id
         self.team_names = team_names  # (team1_name, team2_name)
         self.team_win_odds = team_win_odds # (team1_win_odds, team2_win_odds)
+        self.team_rosters = team_rosters  # (team1_discord_ids, team2_discord_ids)
         super().__init__()
 
         # Image section

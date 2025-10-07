@@ -128,6 +128,15 @@ class CS2(commands.Cog):
                         log.warning(f"Failed to fetch from {GUELO_TEAMS_JSON_URL} guelo teams json: {resp.status}")
                         log.warning("can't do shit without team data")
 
+                # Convert steamids to discord_ids for team rosters
+                team1_discord_ids = []
+                team2_discord_ids = []
+                if team1_steamids:
+                    team1_discord_ids = await self.postgres_db.get_discord_ids_from_steamids(team1_steamids)
+                if team2_steamids:
+                    team2_discord_ids = await self.postgres_db.get_discord_ids_from_steamids(team2_steamids)
+                team_rosters = (team1_discord_ids, team2_discord_ids)
+
                 # get the next match id that will be created
                 last_match_id = await self.mysql_db.get_latest_match_id()
                 next_match_id = last_match_id + 1
@@ -136,7 +145,8 @@ class CS2(commands.Cog):
                     match_id=next_match_id,
                     image_url=image_url,
                     team_names=team_names,
-                    team_win_odds=team_win_odds
+                    team_win_odds=team_win_odds,
+                    team_rosters=team_rosters
                 )
 
                 message = await channel.send(view=live_view)
@@ -683,3 +693,29 @@ class CS2(commands.Cog):
         embed.set_footer(text="HS%=Headshot%, V1%=1v1 Clutch%, Ent%=Entry%, Fl%=Flash%, UD=Utility Damage")
 
         await ctx.send(embed=embed)
+
+    @commands.command()
+    @commands.is_owner()
+    async def refundbets(self, ctx: commands.Context, match_id: int):
+        """Refund all active bets for a specific match.
+
+        Usage: !refundbets <match_id>
+
+        This will:
+        - Mark all active bets as inactive
+        - Refund the original bet amount to each user
+        - All operations happen in a single transaction
+
+        Example: !refundbets 123
+        """
+        try:
+            refunded_count = await self.postgres_db.refund_match_bets(match_id)
+
+            if refunded_count == 0:
+                await ctx.send(f"No active bets found for match {match_id}.")
+            else:
+                await ctx.send(f"✅ Successfully refunded {refunded_count} bet(s) for match {match_id}.")
+
+        except Exception as e:
+            log.error(f"Error refunding bets for match {match_id}: {e}")
+            await ctx.send(f"❌ Failed to refund bets for match {match_id}: {e}")
