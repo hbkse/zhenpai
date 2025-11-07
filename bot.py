@@ -26,7 +26,8 @@ extensions = [
     'cs2',
     'users',
     'points',
-    'voice_logging'
+    'voice_logging',
+    'ten_minute_channel'
 ]
 
 def setup_intents():
