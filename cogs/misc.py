@@ -4,6 +4,7 @@ import discord
 import datetime
 import pytz
 import time
+import asyncio
 import parsedatetime as pdt
 from discord.ext import commands
 from bot import Zhenpai
@@ -47,8 +48,14 @@ class Misc(commands.Cog):
         await ctx.send(f"Bye bye :wave:")
 
     @commands.command()
-    async def deletelast(self, ctx: commands.Context, n: Optional[int] = None):
-        """Delete last N messages, or if replying to a message, delete up to and including that message."""
+    async def deletelast(self, ctx: commands.Context, n: Optional[int] = None, user: Optional[discord.User] = None):
+        """Delete messages with various filters.
+
+        Usage:
+          !deletelast N - Delete last N messages
+          !deletelast N @user - Delete last N messages from specific user
+          Reply to a message - Delete up to and including that message
+        """
 
         # Delete based on reply
         if ctx.message.reference and ctx.message.reference.message_id:
@@ -88,25 +95,147 @@ class Misc(commands.Cog):
                 log.error(f"Error in deletelast reply command: {e}")
 
         else:
-            # Delete last N messages
             if n is None:
                 await ctx.send("❌ Please provide a number of messages to delete or reply to a message.")
                 return
 
             if n < 1:
-                await ctx.send("Please provide a valid number greater than 0.")
+                await ctx.send("❌ Please provide a valid number greater than 0.")
                 return
 
             if n > 100:
                 await ctx.send("bruh aint no way you tryna delete that much sounds kinda sus do it in batches of 100 so you dont wipe the entire channel")
                 return
 
-            messages = []
-            async for message in ctx.channel.history(limit=n + 1):
-                messages.append(message)
+            # Delete with optional user filter
+            if user:
+                # Delete last N messages from specific user
+                messages_to_delete = [ctx.message]  # Include command message
+                count = 0
+                async for message in ctx.channel.history(limit=500):
+                    if message.id != ctx.message.id and message.author.id == user.id:
+                        messages_to_delete.append(message)
+                        count += 1
+                        if count >= n:
+                            break
 
-            await ctx.channel.delete_messages(messages)
-            log.info(f"User {ctx.author} deleted {len(messages)} messages in {ctx.channel}")
+                if len(messages_to_delete) == 1:
+                    await ctx.send(f"❌ No messages found from {user.display_name}.")
+                    return
+
+                try:
+                    await ctx.channel.delete_messages(messages_to_delete)
+                    log.info(f"User {ctx.author} deleted {len(messages_to_delete)} messages from user {user.id} in {ctx.channel}")
+                except discord.Forbidden:
+                    await ctx.send("❌ Missing permissions to delete messages.")
+                except Exception as e:
+                    await ctx.send(f"❌ Error deleting messages: {e}")
+                    log.error(f"Error in deletelast user command: {e}")
+
+            else:
+                # Delete last N messages (original behavior)
+                messages = []
+                async for message in ctx.channel.history(limit=n + 1):
+                    messages.append(message)
+
+                await ctx.channel.delete_messages(messages)
+                log.info(f"User {ctx.author} deleted {len(messages)} messages in {ctx.channel}")
+
+    @commands.command()
+    async def nuke(self, ctx: commands.Context, minutes: int):
+        """Delete all messages from a specified timeframe (in minutes) with confirmation.
+
+        Usage: !nuke <minutes>
+        Example: !nuke 5
+        Example: !nuke 30
+        Max: 2 hours (120 minutes)
+        """
+        if minutes < 1:
+            await ctx.send("❌ Please provide a valid number of minutes greater than 0.")
+            return
+
+        if minutes > 120:  # 2 hours max
+            await ctx.send("❌ Cannot nuke messages older than 120 minutes (2 hours).")
+            return
+
+        # Calculate cutoff time
+        cutoff_time = datetime.datetime.now(pytz.utc) - datetime.timedelta(minutes=minutes)
+
+        # Count messages within the time frame
+        messages_to_delete = []
+        async for message in ctx.channel.history(limit=1000):
+            if message.created_at >= cutoff_time:
+                messages_to_delete.append(message)
+
+        message_count = len(messages_to_delete)
+
+        if message_count == 0:
+            await ctx.send(f"❌ No messages found in the last {minutes} minute{'s' if minutes != 1 else ''}.")
+            return
+
+        if message_count > 500:
+            await ctx.send(f"❌ Found {message_count} messages in the last {minutes} minutes (max 500). Try a shorter time period.")
+            return
+
+        # Send confirmation message
+        confirm_msg = await ctx.send(
+            f"⚠️ **NUKE CONFIRMATION** ⚠️\n"
+            f"This will delete **{message_count} message{'s' if message_count != 1 else ''}** from the last **{minutes} minute{'s' if minutes != 1 else ''}**.\n"
+            f"React with ✅ to confirm or ❌ to cancel."
+        )
+
+        # Add reaction options
+        await confirm_msg.add_reaction("✅")
+        await confirm_msg.add_reaction("❌")
+
+        # Wait for user reaction
+        def check(reaction, user):
+            return (
+                user.id == ctx.author.id
+                and reaction.message.id == confirm_msg.id
+                and str(reaction.emoji) in ["✅", "❌"]
+            )
+
+        try:
+            reaction, user = await self.bot.wait_for("reaction_add", timeout=30.0, check=check)
+
+            if str(reaction.emoji) == "✅":
+                # User confirmed - delete messages
+                await confirm_msg.delete()
+
+                # Delete in batches if needed (Discord limits bulk delete to 100 messages at a time)
+                deleted_count = 0
+                batch_size = 100
+
+                for i in range(0, len(messages_to_delete), batch_size):
+                    batch = messages_to_delete[i:i + batch_size]
+
+                    # Discord bulk delete only works for messages less than 14 days old
+                    fourteen_days_ago = datetime.datetime.now(pytz.utc) - datetime.timedelta(days=14)
+                    recent = [m for m in batch if m.created_at > fourteen_days_ago]
+
+                    if len(recent) == 1:
+                        await recent[0].delete()
+                        deleted_count += 1
+                    elif len(recent) > 1:
+                        await ctx.channel.delete_messages(recent)
+                        deleted_count += len(recent)
+
+                log.info(f"User {ctx.author} nuked {deleted_count} messages from last {minutes} minutes in {ctx.channel}")
+
+                # Send completion message (will auto-delete after 5 seconds)
+                completion_msg = await ctx.send(f"💥 Nuked {deleted_count} message{'s' if deleted_count != 1 else ''}!")
+                await completion_msg.delete(delay=5)
+
+            else:
+                # User cancelled
+                await confirm_msg.edit(content="❌ Nuke cancelled.")
+                await confirm_msg.delete(delay=3)
+
+        except asyncio.TimeoutError:
+            # Timeout - cancel
+            await confirm_msg.edit(content="❌ Nuke cancelled (timeout).")
+            await confirm_msg.delete(delay=3)
 
     @commands.command()
     async def roll(self, ctx: commands.Context, n: int = 100):

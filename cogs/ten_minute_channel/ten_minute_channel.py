@@ -1,15 +1,12 @@
 import logging
 import discord
-from discord.ext import tasks, commands
-from datetime import datetime, timezone, timedelta
+from discord.ext import commands
 from typing import Dict, Tuple
 
 from bot import Zhenpai
 from .db import TenMinuteChannelDb
 
 log: logging.Logger = logging.getLogger(__name__)
-
-CHECK_INTERVAL_MINUTES = 1
 
 
 class TenMinuteChannel(commands.Cog):
@@ -20,10 +17,15 @@ class TenMinuteChannel(commands.Cog):
         self.db = TenMinuteChannelDb(bot.db_pool)
         # Store {(guild_id, channel_id): delete_after_minutes} in memory
         self.registered_channels: Dict[Tuple[int, int], int] = {}
-        self.cleanup_messages.start()
+        self._loaded = False
 
-    def cog_unload(self):
-        self.cleanup_messages.cancel()
+    async def cog_load(self):
+        """Load registered channels from database into memory on cog load."""
+        channels = await self.db.get_all_channels()
+        for record in channels:
+            self.registered_channels[(record.guild_id, record.channel_id)] = record.delete_after_minutes
+        self._loaded = True
+        log.info(f"Loaded {len(self.registered_channels)} registered auto-delete channels from database")
 
     @commands.command(name="create10min")
     @commands.has_permissions(manage_channels=True)
@@ -159,68 +161,31 @@ class TenMinuteChannel(commands.Cog):
             await ctx.send(f"Error updating channel configuration: {e}")
             log.error(f"Error updating auto-delete channel configuration: {e}")
 
-    @tasks.loop(minutes=CHECK_INTERVAL_MINUTES)
-    async def cleanup_messages(self):
-        """Poll registered channels and delete messages older than their configured deletion period."""
-        # Use in-memory dict instead of fetching from database
-        for (guild_id, channel_id), delete_after_minutes in list(self.registered_channels.items()):
-            channel = self.bot.get_channel(channel_id)
+    @commands.Cog.listener()
+    async def on_message(self, message: discord.Message):
+        """Schedule message deletion when a message is sent in an auto-delete channel."""
+        # Ignore DMs
+        if not message.guild:
+            return
 
-            if not channel:
-                log.warning(f"Channel {channel_id} not found, removing from registered channels")
-                del self.registered_channels[(guild_id, channel_id)]
-                await self.db.remove_channel(guild_id, channel_id)
-                continue
+        # Wait until channels are loaded
+        if not self._loaded:
+            return
 
-            # Calculate cutoff time based on channel's configured deletion period
-            cutoff_time = datetime.now(timezone.utc) - timedelta(minutes=delete_after_minutes)
+        # Check if message is in a registered auto-delete channel
+        channel_key = (message.guild.id, message.channel.id)
+        delete_after_minutes = self.registered_channels.get(channel_key)
 
-            try:
-                messages_to_delete = []
+        if delete_after_minutes is None:
+            return
 
-                # Fetch messages and check their age
-                async for message in channel.history(limit=100):
-                    if message.created_at < cutoff_time:
-                        messages_to_delete.append(message)
+        # Schedule message deletion
+        delete_after_seconds = delete_after_minutes * 60
 
-                if messages_to_delete:
-                    # Discord bulk delete only works for messages less than 14 days old
-                    # and requires at least 2 messages
-                    if len(messages_to_delete) == 1:
-                        await messages_to_delete[0].delete()
-                        log.info(f"Deleted 1 message from channel {channel_id}")
-                    else:
-                        # Filter out messages older than 14 days for bulk delete
-                        fourteen_days_ago = datetime.now(timezone.utc) - timedelta(days=14)
-                        bulk_delete = [m for m in messages_to_delete if m.created_at > fourteen_days_ago]
-                        old_delete = [m for m in messages_to_delete if m.created_at <= fourteen_days_ago]
-
-                        if bulk_delete:
-                            await channel.delete_messages(bulk_delete)
-                            log.info(f"Bulk deleted {len(bulk_delete)} messages from channel {channel_id}")
-
-                        # Delete very old messages individually
-                        for message in old_delete:
-                            await message.delete()
-                            log.info(f"Individually deleted old message from channel {channel_id}")
-
-            except discord.Forbidden:
-                log.error(f"Missing permissions to delete messages in channel {channel_id}")
-            except Exception as e:
-                log.error(f"Error cleaning up messages in channel {channel_id}: {e}")
-
-    @cleanup_messages.before_loop
-    async def before_cleanup_messages(self):
-        await self.bot.wait_until_ready()
-
-        # Load registered channels from database into memory
-        channels = await self.db.get_all_channels()
-        for record in channels:
-            self.registered_channels[(record.guild_id, record.channel_id)] = record.delete_after_minutes
-        log.info(f"Loaded {len(self.registered_channels)} registered channels from database")
-
-        log.info(f"Starting {__name__} cleanup loop")
-
-    @cleanup_messages.after_loop
-    async def after_cleanup_messages(self):
-        log.info(f"Stopping {__name__} cleanup loop")
+        try:
+            await message.delete(delay=delete_after_seconds)
+            log.debug(f"Scheduled deletion of message {message.id} in {delete_after_minutes} minutes")
+        except discord.Forbidden:
+            log.error(f"Missing permissions to delete messages in channel {message.channel.id}")
+        except Exception as e:
+            log.error(f"Error scheduling message deletion in channel {message.channel.id}: {e}")

@@ -805,7 +805,8 @@ class Points(commands.Cog):
             log.error(f"Unexpected error in rewardbulk command: {error}")
             await ctx.send("❌ An unexpected error occurred.")
 
-    @tasks.loop(seconds=15)
+    # @tasks.loop(seconds=15)
+    @tasks.loop(minutes=10)
     async def poll_events(self):
         try:
             # Add different point sources here

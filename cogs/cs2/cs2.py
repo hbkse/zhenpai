@@ -334,7 +334,8 @@ class CS2(commands.Cog):
             "team2_name": match_data['team2_name'],
         }
 
-    @tasks.loop(seconds=15)
+    # @tasks.loop(seconds=15)
+    @tasks.loop(minutes=10)
     async def poll_matches(self):
         """Poll the MatchZy MySQL for new matches and replicate to PostgreSQL."""
         try:
