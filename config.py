@@ -45,5 +45,8 @@ COMMIT_HASH = os.environ.get('COMMIT_HASH') or os.environ.get('RAILWAY_GIT_COMMI
 
 COMMAND_PREFIX = "!"
 
-# apexlegendsstatus dot com 
+# apexlegendsstatus dot com
 APEX_API_KEY = os.environ.get('APEX_API_KEY')
+
+# Riot Games API
+RIOT_API_KEY = os.environ.get('RIOT_API_KEY')
