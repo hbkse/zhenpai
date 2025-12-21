@@ -17,6 +17,7 @@ PUUIDS = [
     # ("HGRRGSQ7ugI7ru9bLocaYNe-v8c7jE8batZLmp1eDY8DRfoV507ByhblIvnR2FmoYXfVuxZBvpHJPg", "Im a Railgun", "NA1"),
     ("waE79wXA2UQflf3sIVuYFr_w8tPipymaiYss5ZImdll2y75-WqiDBlFSyONtFWenWcNvFfyymdezJw", "TripleAKGF", "NA1"),
     ("GE2BXEZ-n1-2qdSrctnDsxjoXPAQloBGbjaOBcK9m4a1NjEzLLYua0yckPkyzt1pbvTOLoQDnjO9pA", "flatgirlsrcute", "UB3"),
+    ("L41LjdyYhxAZUn0WNuEd3P67IZS9kOCJ9VqSn4Z_uZsdvP-L8_KeK9jIUNUCSSkW38EvWPasWVZPEg", "Juqex", "MaldU"),
 ]
 
 REGION = "na1"
