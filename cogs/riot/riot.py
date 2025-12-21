@@ -18,6 +18,7 @@ PUUIDS = [
     ("waE79wXA2UQflf3sIVuYFr_w8tPipymaiYss5ZImdll2y75-WqiDBlFSyONtFWenWcNvFfyymdezJw", "TripleAKGF", "NA1"),
     ("GE2BXEZ-n1-2qdSrctnDsxjoXPAQloBGbjaOBcK9m4a1NjEzLLYua0yckPkyzt1pbvTOLoQDnjO9pA", "flatgirlsrcute", "UB3"),
     ("L41LjdyYhxAZUn0WNuEd3P67IZS9kOCJ9VqSn4Z_uZsdvP-L8_KeK9jIUNUCSSkW38EvWPasWVZPEg", "Juqex", "MaldU"),
+    ("uJMVv7Twosa15VG5V3-0JASutvkDqP7pOP-pSGXIZZpjejY673Ahabj97nYSqnyx-PVkWKP_2Ckq8A", "trashahhnih", "trash"),
 ]
 
 REGION = "na1"
