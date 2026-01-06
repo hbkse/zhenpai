@@ -4,24 +4,27 @@ import logging
 import config
 from bot import Zhenpai
 from typing import Dict, List, Optional, Tuple
+from bs4 import BeautifulSoup
+import re
 
 log: logging.Logger = logging.getLogger(__name__)
 
-# puuid, riot name, tag
-PUUIDS = [
-    ("Iud4KolGqC_7x6tcBspISnWk-_LmhebOT-bPz6101zZXnRXyo8u3AzvKQjRjLjvmlBGuuU-akUm5FA", "yukiho", "yuki"),
-    ("3xlFlw3Sj4TRM8EU8d0ilbCkvBA1gaO0tfRyTvSR-_7A-ot_1tBR65cbsG1Uci4KqTQQGIDlBgwoWQ", "Sunjoy", "CFA"),
-    ("l7KRrWXZvkk-6A06cnJpzezJSybbwjl2jv6KldYgCaQlq2fqfmca2c9_XID_2wVb64Zt5weWmU3FuA", "headiesbro", "NA1"),
-    ("cbmC-rmgcRsq4iKAoaKG285eZ2S3UnKCfIUYEfq48G73O6sdroOJo51Jt4n0Hns2RwRf0SmTTSS8HQ", "Prab", "0824"),
-    ("_aZe1zU_wrDoonukOvkS_bHl1lWTa58eCv5TWJAfnZbxHSuM7qx4agPmInyx0wCMVVc4xpv8pOsthA", "charles", "chill"),
-    # ("HGRRGSQ7ugI7ru9bLocaYNe-v8c7jE8batZLmp1eDY8DRfoV507ByhblIvnR2FmoYXfVuxZBvpHJPg", "Im a Railgun", "NA1"),
-    ("waE79wXA2UQflf3sIVuYFr_w8tPipymaiYss5ZImdll2y75-WqiDBlFSyONtFWenWcNvFfyymdezJw", "TripleAKGF", "NA1"),
-    ("GE2BXEZ-n1-2qdSrctnDsxjoXPAQloBGbjaOBcK9m4a1NjEzLLYua0yckPkyzt1pbvTOLoQDnjO9pA", "flatgirlsrcute", "UB3"),
-    ("L41LjdyYhxAZUn0WNuEd3P67IZS9kOCJ9VqSn4Z_uZsdvP-L8_KeK9jIUNUCSSkW38EvWPasWVZPEg", "Juqex", "MaldU"),
-    ("uJMVv7Twosa15VG5V3-0JASutvkDqP7pOP-pSGXIZZpjejY673Ahabj97nYSqnyx-PVkWKP_2Ckq8A", "trashahhnih", "trash"),
+# riot name, tag
+SUMMONERS = [
+    ("yukiho", "yuki"),
+    ("Sunjoy", "CFA"),
+    ("headiesbro", "NA1"),
+    ("Prab", "0824"),
+    ("charles", "chill"),
+    ("TripleAKGF", "NA1"),
+    ("flatgirlsrcute", "UB3"),
+    ("Juqex", "MaldU"),
+    ("trashahhnih", "trash"),
+    ("cutefatboy", "frick"),
+    ("Coolkids", "NA1")
 ]
 
-REGION = "na1"
+REGION = "na"
 
 TIER_VALUES = {
     "CHALLENGER": 10,
@@ -45,103 +48,141 @@ RANK_VALUES = {
 }
 
 class Riot(commands.Cog):
-    """Commands for Riot Games APIs"""
+    """Commands for Riot Games TFT stats"""
 
     def __init__(self, bot: Zhenpai):
         self.bot = bot
 
-    async def get_puuid_from_name(self, name: str, tag: str) -> str:
-        """"""
-        account_region = "americas" # not sure difference between this and the "na1" region
-        account_url = f"https://{account_region}.api.riotgames.com/riot/account/v1/accounts/by-riot-id/{name}/{tag}"
-        headers = {"X-Riot-Token": config.RIOT_API_KEY}
+    async def scrape_tft_opgg(self, name: str, tag: str) -> Optional[Dict]:
+        """Scrape TFT data from op.gg"""
+        base_url = config.TFT_OP_GG_BASE_URL
+        # URL format: /summoners/na/name-tag
+        summoner_url = f"{base_url}/summoners/{REGION}/{name}-{tag}"
 
         try:
-            async with self.bot.http_client.get(account_url, headers=headers) as resp:
+            async with self.bot.http_client.get(summoner_url) as resp:
                 if resp.status != 200:
-                    log.error(f"Failed to fetch puuid for name {name}#{tag} {resp.status} {resp.json()}")
+                    log.error(f"Failed to fetch TFT data for {name}#{tag} from op.gg (status {resp.status})")
                     return None
-                account_data = await resp.json()
-                puuid = account_data["puuid"]
-                return puuid
+
+                html = await resp.text()
+                soup = BeautifulSoup(html, 'lxml')
+
+                # Extract current rank
+                rank_text = "UNRANKED"
+                rank_element = soup.select_one('.rank')
+                if rank_element:
+                    rank_text = rank_element.get_text(strip=True)
+
+                # Extract LP
+                lp = 0
+                lp_element = soup.select_one('.lp')
+                if lp_element:
+                    lp_match = re.search(r'(\d+)', lp_element.get_text())
+                    if lp_match:
+                        lp = int(lp_match.group(1))
+
+                # Extract total ranked games played
+                ranked_games = 0
+                games_element = soup.select_one('.total-games')
+                if games_element:
+                    games_match = re.search(r'(\d+)', games_element.get_text())
+                    if games_match:
+                        ranked_games = int(games_match.group(1))
+
+                # Extract last 30 games average placement
+                avg_place = 0.0
+                avg_place_element = soup.select_one('.avg-placement')
+                if avg_place_element:
+                    avg_match = re.search(r'(\d+\.?\d*)', avg_place_element.get_text())
+                    if avg_match:
+                        avg_place = float(avg_match.group(1))
+
+                return {
+                    "rank": rank_text,
+                    "lp": lp,
+                    "ranked_games": ranked_games,
+                    "avg_placement": avg_place
+                }
+
         except Exception as e:
-            log.exception(f"Error fetching summoner {name}#{tag}: {e}")
+            log.exception(f"Error scraping TFT data for {name}#{tag}: {e}")
             return None
 
-    async def get_tft_rank_by_puuid(self, puuid: str) -> Optional[Tuple]:
-        """Fetch TFT rank data for a puuid"""
-        url = f"https://{REGION}.api.riotgames.com/tft/league/v1/by-puuid/{puuid}"
-        headers = {"X-Riot-Token": config.RIOT_API_KEY}
-
-        try:
-            async with self.bot.http_client.get(url, headers=headers) as resp:
-                if resp.status != 200:
-                    log.error(f"Failed to fetch TFT rank for puuid {puuid} (status {resp.status})")
-                    return None
-                rank_data = await resp.json()
-
-                # unranked case is 200 with empty list
-                if len(rank_data) != 1:
-                    return "UNRANKED", "", 0
-                
-                rank_data = rank_data[0]
-                tier = rank_data.get("tier")
-                rank = rank_data.get("rank")
-                leaguePoints = rank_data.get("leaguePoints")
-                return tier, rank, leaguePoints
-        except Exception as e:
-            log.exception(f"Error fetching TFT rank for {puuid}: {e}")
-            return None
-
-    def format_rank(self, tier: str, rank: str, lp: int, riot_name: str) -> str:
+    def format_rank(self, rank_text: str, riot_name: str, ranked_games: int = 0, avg_placement: float = 0.0) -> str:
         """Format rank information into a readable string"""
-        if tier == "UNRANKED" or not tier:
-            return f"**{riot_name}**: Unranked"
+        base = f"**{riot_name}**: {rank_text}"
 
-        if tier in ["CHALLENGER", "GRANDMASTER", "MASTER"]:
-            return f"**{riot_name}**: {tier.capitalize()} ({lp} LP)"
-        else:
-            return f"**{riot_name}**: {tier.capitalize()} {rank} ({lp} LP)"
+        # Add ranked games count
+        if ranked_games > 0:
+            base += f" | {ranked_games} games"
 
-    def get_rank_sort_key(self, tier: str, rank: str, lp: int) -> Tuple[int, int, int]:
-        """Generate a sort key for ranking (higher is better)"""
-        tier_value = TIER_VALUES.get(tier, -1)
-        rank_value = RANK_VALUES.get(rank, 0)  # Master+ don't have ranks
+        # Add average placement
+        if avg_placement > 0:
+            base += f" | Avg: {avg_placement:.2f}"
+
+        return base
+
+    def parse_rank_for_sorting(self, rank_text: str) -> Tuple[int, int, int]:
+        """Parse rank text to extract tier, division, and LP for sorting"""
+        # Example formats: "DIAMOND II 45 LP", "MASTER 234 LP", "UNRANKED"
+        rank_upper = rank_text.upper()
+
+        # Extract LP
+        lp = 0
+        lp_match = re.search(r'(\d+)\s*LP', rank_upper)
+        if lp_match:
+            lp = int(lp_match.group(1))
+
+        # Extract tier
+        tier_value = 0
+        for tier, value in TIER_VALUES.items():
+            if tier in rank_upper:
+                tier_value = value
+                break
+
+        # Extract division (I, II, III, IV)
+        rank_value = 0
+        for rank, value in RANK_VALUES.items():
+            if f' {rank} ' in rank_upper or rank_upper.endswith(f' {rank}'):
+                rank_value = value
+                break
+
         return (tier_value, rank_value, lp)
 
     @commands.command()
     async def tft(self, ctx: commands.Context):
-        """Get TFT ranks for all friends"""
-        api_key = getattr(config, "RIOT_API_KEY", None)
-        if not api_key:
-            await ctx.send("Bot is missing Riot API key! (idiot)")
-            return
-
-        message = await ctx.send("Fetching...")
+        """Get TFT ranks for all friends from op.gg"""
+        message = await ctx.send("Fetching from op.gg...")
         player_data = []
 
-        for puuid, riot_name, tag in PUUIDS:
-            rank_info = await self.get_tft_rank_by_puuid(puuid)
-            if not rank_info:
-                await message.edit(content=f"Failed to fetch rank for {riot_name}")
-                return
+        for riot_name, tag in SUMMONERS:
+            data = await self.scrape_tft_opgg(riot_name, tag)
+            if not data:
+                log.warning(f"Failed to fetch data for {riot_name}#{tag}")
+                continue
 
-            tier, rank, lp = rank_info
             player_data.append({
                 "name": riot_name,
-                "tier": tier,
-                "rank": rank,
-                "lp": lp
+                "rank": data["rank"],
+                "ranked_games": data["ranked_games"],
+                "avg_placement": data["avg_placement"]
             })
 
+        # Sort by rank (highest to lowest)
         player_data.sort(
-            key=lambda x: self.get_rank_sort_key(x["tier"], x["rank"], x["lp"]),
+            key=lambda x: self.parse_rank_for_sorting(x["rank"]),
             reverse=True
         )
 
         results = []
         for player in player_data:
-            rank_str = self.format_rank(player["tier"], player["rank"], player["lp"], player["name"])
+            rank_str = self.format_rank(
+                player["rank"],
+                player["name"],
+                player["ranked_games"],
+                player["avg_placement"]
+            )
             results.append(rank_str)
 
         embed = discord.Embed(
