@@ -1,9 +1,11 @@
 from discord.ext import commands
 import discord
 import logging
-import config
 from bot import Zhenpai
 from typing import Dict, List, Optional, Tuple
+import re
+import json
+import asyncio
 
 log: logging.Logger = logging.getLogger(__name__)
 
@@ -21,7 +23,7 @@ PUUIDS = [
     ("uJMVv7Twosa15VG5V3-0JASutvkDqP7pOP-pSGXIZZpjejY673Ahabj97nYSqnyx-PVkWKP_2Ckq8A", "trashahhnih", "trash"),
 ]
 
-REGION = "na1"
+TACTICS_TOOLS_REGION = "na"
 
 TIER_VALUES = {
     "CHALLENGER": 10,
@@ -50,58 +52,115 @@ class Riot(commands.Cog):
     def __init__(self, bot: Zhenpai):
         self.bot = bot
 
-    async def get_puuid_from_name(self, name: str, tag: str) -> str:
-        """"""
-        account_region = "americas" # not sure difference between this and the "na1" region
-        account_url = f"https://{account_region}.api.riotgames.com/riot/account/v1/accounts/by-riot-id/{name}/{tag}"
-        headers = {"X-Riot-Token": config.RIOT_API_KEY}
-
+    async def _fetch_player_json_data(self, name: str, region: str = TACTICS_TOOLS_REGION) -> Optional[Dict]:
+        """Fetch and extract JSON data from tactics.tools"""
+        url = f"https://tactics.tools/player/{region}/{name}"
+        
         try:
-            async with self.bot.http_client.get(account_url, headers=headers) as resp:
+            async with self.bot.http_client.get(url) as resp:
                 if resp.status != 200:
-                    log.error(f"Failed to fetch puuid for name {name}#{tag} {resp.status} {resp.json()}")
+                    log.error(f"Failed to fetch data for {name} (status {resp.status})")
                     return None
-                account_data = await resp.json()
-                puuid = account_data["puuid"]
-                return puuid
+                html = await resp.text()
+                return self._extract_json_data(html)
         except Exception as e:
-            log.exception(f"Error fetching summoner {name}#{tag}: {e}")
+            log.exception(f"Error fetching data for {name}: {e}")
             return None
 
-    async def get_tft_rank_by_puuid(self, puuid: str) -> Optional[Tuple]:
-        """Fetch TFT rank data for a puuid"""
-        url = f"https://{REGION}.api.riotgames.com/tft/league/v1/by-puuid/{puuid}"
-        headers = {"X-Riot-Token": config.RIOT_API_KEY}
-
+    def _extract_json_data(self, html: str) -> Optional[Dict]:
+        """Extract and parse embedded JSON data from HTML"""
         try:
-            async with self.bot.http_client.get(url, headers=headers) as resp:
-                if resp.status != 200:
-                    log.error(f"Failed to fetch TFT rank for puuid {puuid} (status {resp.status})")
-                    return None
-                rank_data = await resp.json()
+            json_start = html.find('{"props"')
+            if json_start == -1:
+                return None
+            
+            json_str = html[json_start:]
+            brace_count = 0
+            in_string = False
+            escape_next = False
+            
+            for i, char in enumerate(json_str):
+                if escape_next:
+                    escape_next = False
+                elif char == '\\':
+                    escape_next = True
+                elif char == '"':
+                    in_string = not in_string
+                elif not in_string:
+                    if char == '{':
+                        brace_count += 1
+                    elif char == '}':
+                        brace_count -= 1
+                        if brace_count == 0:
+                            try:
+                                data = json.loads(json_str[:i + 1])
+                                matches = data.get("props", {}).get("pageProps", {}).get("initialData", {}).get("matches", [])
+                                if matches and isinstance(matches, list):
+                                    return data
+                            except (json.JSONDecodeError, KeyError, ValueError):
+                                pass
+                            break
+                if i > 200000:
+                    break
+            
+            return None
+        except Exception as e:
+            log.debug(f"Error extracting JSON data: {e}")
+            return None
 
-                # unranked case is 200 with empty list
-                if len(rank_data) != 1:
-                    return "UNRANKED", "", 0
+    def _parse_rank_from_matches(self, matches: List[Dict]) -> Tuple[str, str, int]:
+        """Parse rank from matches data"""
+        try:
+            if not matches:
+                return "UNRANKED", "", 0
+            
+            ranked_matches = [m for m in matches if m.get("queueId") == 1100]
+            if not ranked_matches:
+                return "UNRANKED", "", 0
+            
+            recent_match = sorted(ranked_matches, key=lambda x: x.get("dateTime", 0), reverse=True)[0]
+            rank_after = recent_match.get("rankAfter")
+            
+            if rank_after and isinstance(rank_after, list) and len(rank_after) >= 2:
+                rank_str = rank_after[0]  # "PLATINUM I"
+                lp = rank_after[1]  # 92
                 
-                rank_data = rank_data[0]
-                tier = rank_data.get("tier")
-                rank = rank_data.get("rank")
-                leaguePoints = rank_data.get("leaguePoints")
-                return tier, rank, leaguePoints
+                tier_match = re.search(r'(CHALLENGER|GRANDMASTER|MASTER|DIAMOND|EMERALD|PLATINUM|GOLD|SILVER|BRONZE|IRON)', rank_str, re.IGNORECASE)
+                if tier_match:
+                    tier = tier_match.group(1).upper()
+                    rank = ""
+                    if tier not in ["CHALLENGER", "GRANDMASTER", "MASTER"]:
+                        rank_match = re.search(r'\b([IVX]+)\b', rank_str)
+                        if rank_match:
+                            rank = rank_match.group(1)
+                    return tier, rank, lp
+            
+            return "UNRANKED", "", 0
         except Exception as e:
-            log.exception(f"Error fetching TFT rank for {puuid}: {e}")
-            return None
+            log.exception(f"Error parsing rank: {e}")
+            return "UNRANKED", "", 0
 
-    def format_rank(self, tier: str, rank: str, lp: int, riot_name: str) -> str:
+    def format_rank(self, tier: str, rank: str, lp: int, riot_name: str, match_stats: Optional[Dict] = None) -> str:
         """Format rank information into a readable string"""
         if tier == "UNRANKED" or not tier:
-            return f"**{riot_name}**: Unranked"
-
-        if tier in ["CHALLENGER", "GRANDMASTER", "MASTER"]:
-            return f"**{riot_name}**: {tier.capitalize()} ({lp} LP)"
+            base = f"**{riot_name}**: Unranked"
+        elif tier in ["CHALLENGER", "GRANDMASTER", "MASTER"]:
+            base = f"**{riot_name}**: {tier.capitalize()} ({lp} LP)"
         else:
-            return f"**{riot_name}**: {tier.capitalize()} {rank} ({lp} LP)"
+            base = f"**{riot_name}**: {tier.capitalize()} {rank} ({lp} LP)"
+        
+        # Add match statistics if available
+        if match_stats:
+            stats_parts = []
+            if match_stats.get("total_games", 0) > 0:
+                stats_parts.append(f"{match_stats['total_games']} games")
+            if match_stats.get("recent_20_avg"):
+                stats_parts.append(f"Avg: {match_stats['recent_20_avg']}")
+            
+            if stats_parts:
+                base += f" | {', '.join(stats_parts)}"
+        
+        return base
 
     def get_rank_sort_key(self, tier: str, rank: str, lp: int) -> Tuple[int, int, int]:
         """Generate a sort key for ranking (higher is better)"""
@@ -109,40 +168,68 @@ class Riot(commands.Cog):
         rank_value = RANK_VALUES.get(rank, 0)  # Master+ don't have ranks
         return (tier_value, rank_value, lp)
 
+    def _parse_match_history(self, matches: List[Dict]) -> Optional[Dict]:
+        """Parse match history from matches data"""
+        if not matches:
+            return None
+        
+        ranked_matches = [m for m in matches if m.get("queueId") == 1100]
+        recent_20 = sorted(ranked_matches, key=lambda x: x.get("dateTime", 0), reverse=True)[:20]
+        
+        placements = [m.get("info", {}).get("placement") for m in recent_20 
+                     if m.get("info", {}).get("placement", 0) > 0]
+        avg_placement = sum(placements) / len(placements) if placements else 0
+        
+        return {
+            "total_games": len(ranked_matches),
+            "recent_20_avg": round(avg_placement, 2) if avg_placement > 0 else None
+        }
+
     @commands.command()
     async def tft(self, ctx: commands.Context):
         """Get TFT ranks for all friends"""
-        api_key = getattr(config, "RIOT_API_KEY", None)
-        if not api_key:
-            await ctx.send("Bot is missing Riot API key! (idiot)")
-            return
-
         message = await ctx.send("Fetching...")
         player_data = []
 
-        for puuid, riot_name, tag in PUUIDS:
-            rank_info = await self.get_tft_rank_by_puuid(puuid)
-            if not rank_info:
-                await message.edit(content=f"Failed to fetch rank for {riot_name}")
-                return
+        for _, riot_name, _ in PUUIDS:
+            json_data = await self._fetch_player_json_data(riot_name, TACTICS_TOOLS_REGION)
+            if not json_data:
+                log.warning(f"Failed to fetch data for {riot_name}, skipping")
+                await asyncio.sleep(1)
+                continue
 
-            tier, rank, lp = rank_info
+            matches = json_data.get("props", {}).get("pageProps", {}).get("initialData", {}).get("matches", [])
+            
+            tier, rank, lp = self._parse_rank_from_matches(matches)
+
+            try:
+                match_stats = self._parse_match_history(matches)
+            except Exception as e:
+                log.warning(f"Failed to parse match history for {riot_name}: {e}")
+                match_stats = None
+            
             player_data.append({
                 "name": riot_name,
                 "tier": tier,
                 "rank": rank,
-                "lp": lp
+                "lp": lp,
+                "match_stats": match_stats
             })
+            await asyncio.sleep(1)
 
         player_data.sort(
             key=lambda x: self.get_rank_sort_key(x["tier"], x["rank"], x["lp"]),
             reverse=True
         )
 
-        results = []
-        for player in player_data:
-            rank_str = self.format_rank(player["tier"], player["rank"], player["lp"], player["name"])
-            results.append(rank_str)
+        if not player_data:
+            await message.edit(content="Failed to fetch data for any players")
+            return
+
+        results = [
+            self.format_rank(p["tier"], p["rank"], p["lp"], p["name"], p.get("match_stats"))
+            for p in player_data
+        ]
 
         embed = discord.Embed(
             description="\n".join(results) if results else "No players found",
