@@ -48,8 +48,5 @@ COMMAND_PREFIX = "!"
 # apexlegendsstatus dot com
 APEX_API_KEY = os.environ.get('APEX_API_KEY')
 
-# Riot Games API
-RIOT_API_KEY = os.environ.get('RIOT_API_KEY')
-
-# TFT OP.GG
-TFT_OP_GG_BASE_URL = os.environ.get('TFT_OP_GG_BASE_URL', 'https://tft.op.gg')
+# TFT Tools API
+TFT_TOOLS_BASE_URL = os.environ.get('TFT_TOOLS_BASE_URL')

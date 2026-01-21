@@ -4,13 +4,12 @@ import logging
 import config
 from bot import Zhenpai
 from typing import Dict, List, Optional, Tuple
-from bs4 import BeautifulSoup
 import re
 
 log: logging.Logger = logging.getLogger(__name__)
 
 # riot name, tag
-SUMMONERS = [
+TFT_SUMMONERS = [
     ("yukiho", "yuki"),
     ("Sunjoy", "CFA"),
     ("headiesbro", "NA1"),
@@ -21,10 +20,12 @@ SUMMONERS = [
     ("Juqex", "MaldU"),
     ("trashahhnih", "trash"),
     ("cutefatboy", "frick"),
-    ("Coolkids", "NA1")
+    ("Coolkids", "NA1"),
+    ("ycxna", "NA1")
 ]
 
-REGION = "na"
+REGION = "na1"
+TFT_SET_NUMBER = 16
 
 TIER_VALUES = {
     "CHALLENGER": 10,
@@ -53,140 +54,151 @@ class Riot(commands.Cog):
     def __init__(self, bot: Zhenpai):
         self.bot = bot
 
-    async def scrape_tft_opgg(self, name: str, tag: str) -> Optional[Dict]:
-        """Scrape TFT data from op.gg"""
-        base_url = config.TFT_OP_GG_BASE_URL
-        # URL format: /summoners/na/name-tag
-        summoner_url = f"{base_url}/summoners/{REGION}/{name}-{tag}"
+    async def fetch_tft_data(self, name: str, tag: str) -> Optional[Dict]:
+        """Fetch TFT data from API"""
+        base_url = config.TFT_TOOLS_BASE_URL
+        set_param = TFT_SET_NUMBER * 10
+        api_url = f"{base_url}/player/stats2/{REGION}/{name}/{tag}/{set_param}/50"
 
         try:
-            async with self.bot.http_client.get(summoner_url) as resp:
+            async with self.bot.http_client.get(api_url) as resp:
                 if resp.status != 200:
-                    log.error(f"Failed to fetch TFT data for {name}#{tag} from op.gg (status {resp.status})")
+                    log.error(f"Failed to fetch TFT data for {name}#{tag} from tft.tools (status {resp.status})")
                     return None
+                log.info(f"fetching for {name}#{tag}")
+                data = await resp.json()
+                log.info(f"done fetching for {name}#{tag}")
 
-                html = await resp.text()
-                soup = BeautifulSoup(html, 'lxml')
+                # Extract rankedLeague from playerInfo
+                # Returns [division, LP] like ["PLATINUM I", 92] or ["MASTER I", 199]
+                ranked_league = data.get("playerInfo", {}).get("rankedLeague", [])
 
-                # Extract current rank
-                rank_text = "UNRANKED"
-                rank_element = soup.select_one('.rank')
-                if rank_element:
-                    rank_text = rank_element.get_text(strip=True)
+                # Extract number of ranked games
+                games = data.get("queueSeasonStats", {}).get("1100", {}).get("games", 0)
 
-                # Extract LP
-                lp = 0
-                lp_element = soup.select_one('.lp')
-                if lp_element:
-                    lp_match = re.search(r'(\d+)', lp_element.get_text())
-                    if lp_match:
-                        lp = int(lp_match.group(1))
-
-                # Extract total ranked games played
-                ranked_games = 0
-                games_element = soup.select_one('.total-games')
-                if games_element:
-                    games_match = re.search(r'(\d+)', games_element.get_text())
-                    if games_match:
-                        ranked_games = int(games_match.group(1))
-
-                # Extract last 30 games average placement
-                avg_place = 0.0
-                avg_place_element = soup.select_one('.avg-placement')
-                if avg_place_element:
-                    avg_match = re.search(r'(\d+\.?\d*)', avg_place_element.get_text())
-                    if avg_match:
-                        avg_place = float(avg_match.group(1))
+                # Calculate L20LP: LP gained/lost from last 20 ranked games
+                matches = data.get("matches", [])
+                ranked_matches = [m for m in matches if m.get("queueId") == 1100]
+                last_20_ranked = ranked_matches[:20]  # Take first 20 (most recent)
+                l20lp = sum(m.get("lpDiff", 0) for m in last_20_ranked)
 
                 return {
-                    "rank": rank_text,
-                    "lp": lp,
-                    "ranked_games": ranked_games,
-                    "avg_placement": avg_place
+                    "rankedLeague": ranked_league,
+                    "games": games,
+                    "l20lp": l20lp
                 }
 
         except Exception as e:
-            log.exception(f"Error scraping TFT data for {name}#{tag}: {e}")
+            log.exception(f"Error fetching TFT data for {name}#{tag}: {e}")
             return None
 
-    def format_rank(self, rank_text: str, riot_name: str, ranked_games: int = 0, avg_placement: float = 0.0) -> str:
-        """Format rank information into a readable string"""
-        base = f"**{riot_name}**: {rank_text}"
+    def get_rank_string(self, ranked_league: List) -> str:
+        """Get the rank string without formatting"""
+        if not ranked_league or len(ranked_league) != 2:
+            return "Unranked"
 
-        # Add ranked games count
-        if ranked_games > 0:
-            base += f" | {ranked_games} games"
+        division, lp = ranked_league
+        if not division or division == "UNRANKED":
+            return "Unranked"
 
-        # Add average placement
-        if avg_placement > 0:
-            base += f" | Avg: {avg_placement:.2f}"
+        # Parse the division to extract tier and rank
+        parts = division.split()
+        tier = parts[0] if parts else division
 
-        return base
+        # For Master, Grandmaster, Challenger - don't show division
+        if tier.upper() in ["MASTER", "GRANDMASTER", "CHALLENGER"]:
+            return f"{tier.capitalize()} ({lp} LP)"
+        else:
+            # Capitalize tier, keep roman numeral uppercase
+            formatted_tier = tier.capitalize()
+            roman_numeral = parts[1].upper() if len(parts) > 1 else ""
+            formatted_division = f"{formatted_tier} {roman_numeral}" if roman_numeral else formatted_tier
+            return f"{formatted_division} ({lp} LP)"
 
-    def parse_rank_for_sorting(self, rank_text: str) -> Tuple[int, int, int]:
-        """Parse rank text to extract tier, division, and LP for sorting"""
-        # Example formats: "DIAMOND II 45 LP", "MASTER 234 LP", "UNRANKED"
-        rank_upper = rank_text.upper()
+    def format_rank(self, ranked_league: List, riot_name: str, games: int = 0, l20lp: int = 0, name_width: int = 20, rank_width: int = 25) -> str:
+        """Format rank information into a table-like string"""
+        # Get rank string
+        rank_str = self.get_rank_string(ranked_league)
 
-        # Extract LP
-        lp = 0
-        lp_match = re.search(r'(\d+)\s*LP', rank_upper)
-        if lp_match:
-            lp = int(lp_match.group(1))
+        # Format with padding for alignment using monospace (no markdown)
+        name_part = f"{riot_name}:".ljust(name_width + 2)  # +2 for colon and spacing
+        rank_part = rank_str.ljust(rank_width + 2)  # +2 for extra spacing
+        games_part = f"{games:>3} games" if games >= 0 else ""
 
-        # Extract tier
-        tier_value = 0
-        for tier, value in TIER_VALUES.items():
-            if tier in rank_upper:
-                tier_value = value
-                break
+        # Add L20LP with +/- sign (always show sign, right-align in 4 chars)
+        l20lp_part = f"  {l20lp:+4} LP"
 
-        # Extract division (I, II, III, IV)
-        rank_value = 0
-        for rank, value in RANK_VALUES.items():
-            if f' {rank} ' in rank_upper or rank_upper.endswith(f' {rank}'):
-                rank_value = value
-                break
+        return f"{name_part}{rank_part}{games_part}{l20lp_part}".rstrip()
+
+    def parse_rank_for_sorting(self, ranked_league: List) -> Tuple[int, int, int]:
+        """Parse rankedLeague list to extract tier, division, and LP for sorting"""
+        # rankedLeague is [division, LP]
+        # Examples: ["PLATINUM I", 92], ["MASTER I", 199], ["CHALLENGER I", 500]
+        if not ranked_league or len(ranked_league) != 2:
+            return (0, 0, 0)
+
+        division, lp = ranked_league
+
+        if not division or division == "UNRANKED":
+            return (0, 0, 0)
+
+        # Parse division string to extract tier and rank
+        # Examples: "PLATINUM I" -> ("PLATINUM", "I"), "MASTER I" -> ("MASTER", "I")
+        parts = division.upper().split()
+        tier = parts[0] if parts else "UNRANKED"
+        rank = parts[1] if len(parts) > 1 else ""
+
+        tier_value = TIER_VALUES.get(tier, 0)
+        rank_value = RANK_VALUES.get(rank, 0)
 
         return (tier_value, rank_value, lp)
 
     @commands.command()
     async def tft(self, ctx: commands.Context):
-        """Get TFT ranks for all friends from op.gg"""
-        message = await ctx.send("Fetching from op.gg...")
+        """Get TFT ranks for all friend"""
+        message = await ctx.send("Fetching tft stats...")
         player_data = []
 
-        for riot_name, tag in SUMMONERS:
-            data = await self.scrape_tft_opgg(riot_name, tag)
+        for riot_name, tag in TFT_SUMMONERS:
+            data = await self.fetch_tft_data(riot_name, tag)
             if not data:
                 log.warning(f"Failed to fetch data for {riot_name}#{tag}")
                 continue
 
             player_data.append({
                 "name": riot_name,
-                "rank": data["rank"],
-                "ranked_games": data["ranked_games"],
-                "avg_placement": data["avg_placement"]
+                "rankedLeague": data["rankedLeague"],
+                "games": data["games"],
+                "l20lp": data["l20lp"]
             })
 
         # Sort by rank (highest to lowest)
         player_data.sort(
-            key=lambda x: self.parse_rank_for_sorting(x["rank"]),
+            key=lambda x: self.parse_rank_for_sorting(x["rankedLeague"]),
             reverse=True
         )
+
+        # Calculate max widths for alignment
+        max_name_width = max(len(player["name"]) for player in player_data) if player_data else 10
+        max_rank_width = max(len(self.get_rank_string(player["rankedLeague"])) for player in player_data) if player_data else 20
 
         results = []
         for player in player_data:
             rank_str = self.format_rank(
-                player["rank"],
+                player["rankedLeague"],
                 player["name"],
-                player["ranked_games"],
-                player["avg_placement"]
+                player["games"],
+                player["l20lp"],
+                max_name_width,
+                max_rank_width
             )
             results.append(rank_str)
 
+        # Wrap in code block for monospace alignment
+        description = "```\n" + "\n".join(results) + "\n```" if results else "No players found"
+
         embed = discord.Embed(
-            description="\n".join(results) if results else "No players found",
+            description=description,
             color=discord.Color.blue()
         )
 
