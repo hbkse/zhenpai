@@ -5,6 +5,7 @@ import config
 from bot import Zhenpai
 from typing import Dict, List, Optional, Tuple
 import re
+from datetime import datetime, timedelta
 
 log: logging.Logger = logging.getLogger(__name__)
 
@@ -76,16 +77,19 @@ class Riot(commands.Cog):
                 # Extract number of ranked games
                 games = data.get("queueSeasonStats", {}).get("1100", {}).get("games", 0)
 
-                # Calculate L20LP: LP gained/lost from last 20 ranked games
+                # Calculate L2DLP: LP gained/lost from last 2 days of ranked games
                 matches = data.get("matches", [])
                 ranked_matches = [m for m in matches if m.get("queueId") == 1100]
-                last_20_ranked = ranked_matches[:20]  # Take first 20 (most recent)
-                l20lp = sum(m.get("lpDiff", 0) for m in last_20_ranked)
+
+                # Filter for matches in the last 2 days
+                three_days_ago = (datetime.now().timestamp() - (2 * 24 * 60 * 60)) * 1000  # 2 days in milliseconds
+                recent_ranked = [m for m in ranked_matches if m.get("dateTime", 0) >= three_days_ago]
+                l2dlp = sum(m.get("lpDiff", 0) for m in recent_ranked)
 
                 return {
                     "rankedLeague": ranked_league,
                     "games": games,
-                    "l20lp": l20lp
+                    "l2dlp": l2dlp
                 }
 
         except Exception as e:
@@ -115,7 +119,7 @@ class Riot(commands.Cog):
             formatted_division = f"{formatted_tier} {roman_numeral}" if roman_numeral else formatted_tier
             return f"{formatted_division} ({lp} LP)"
 
-    def format_rank(self, ranked_league: List, riot_name: str, games: int = 0, l20lp: int = 0, name_width: int = 20, rank_width: int = 25) -> str:
+    def format_rank(self, ranked_league: List, riot_name: str, games: int = 0, l2dlp: int = 0, name_width: int = 20, rank_width: int = 25) -> str:
         """Format rank information into a table-like string"""
         # Get rank string
         rank_str = self.get_rank_string(ranked_league)
@@ -125,10 +129,10 @@ class Riot(commands.Cog):
         rank_part = rank_str.ljust(rank_width + 2)  # +2 for extra spacing
         games_part = f"{games:>3} games" if games >= 0 else ""
 
-        # Add L20LP with +/- sign (always show sign, right-align in 4 chars)
-        l20lp_part = f"  {l20lp:+4} LP"
+        # Add L2DLP with +/- sign (always show sign, right-align in 4 chars)
+        l2dlp_part = f"  {l2dlp:+4} LP"
 
-        return f"{name_part}{rank_part}{games_part}{l20lp_part}".rstrip()
+        return f"{name_part}{rank_part}{games_part}{l2dlp_part}".rstrip()
 
     def parse_rank_for_sorting(self, ranked_league: List) -> Tuple[int, int, int]:
         """Parse rankedLeague list to extract tier, division, and LP for sorting"""
@@ -169,7 +173,7 @@ class Riot(commands.Cog):
                 "name": riot_name,
                 "rankedLeague": data["rankedLeague"],
                 "games": data["games"],
-                "l20lp": data["l20lp"]
+                "l2dlp": data["l2dlp"]
             })
 
         # Sort by rank (highest to lowest)
@@ -188,7 +192,7 @@ class Riot(commands.Cog):
                 player["rankedLeague"],
                 player["name"],
                 player["games"],
-                player["l20lp"],
+                player["l2dlp"],
                 max_name_width,
                 max_rank_width
             )
@@ -201,5 +205,6 @@ class Riot(commands.Cog):
             description=description,
             color=discord.Color.blue()
         )
+        embed.set_footer(text="LP change is from last 48 hours")
 
         await message.edit(content=None, embed=embed)
