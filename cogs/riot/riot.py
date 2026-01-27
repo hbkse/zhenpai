@@ -16,12 +16,12 @@ TFT_SUMMONERS = [
     ("headiesbro", "NA1"),
     ("Prab", "0824"),
     ("charles", "chill"),
-    ("TripleAKGF", "NA1"),
-    ("flatgirlsrcute", "UB3"),
+    # ("TripleAKGF", "NA1"),
+    # ("flatgirlsrcute", "UB3"),
     ("Juqex", "MaldU"),
     ("trashahhnih", "trash"),
-    ("cutefatboy", "frick"),
-    ("Coolkids", "NA1"),
+    # ("cutefatboy", "frick"),
+    # ("Coolkids", "NA1"),
     ("ycxna", "NA1")
 ]
 
