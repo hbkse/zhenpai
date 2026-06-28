@@ -287,7 +287,7 @@ class Misc(commands.Cog):
             """
             returns (bool, str) where str is the explanation string
             """
-            start_date_str = "November 4, 2024" # arbitrary start date where he's working
+            start_date_str = "June 22, 2026" # arbitrary start date where he's working
 
             # Parse dates
             input_struct, parse_status = self.pdtcal.parse(content)
