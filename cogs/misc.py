@@ -237,8 +237,9 @@ class Misc(commands.Cog):
             await confirm_msg.edit(content="❌ Nuke cancelled (timeout).")
             await confirm_msg.delete(delay=3)
 
-    @commands.command()
+    @commands.hybrid_command()
     async def roll(self, ctx: commands.Context, n: int = 100):
+        """Roll a number between 1 and n (default 100)."""
         roll = random.randint(1, n)
         if roll == 1:
             await ctx.send(f'🎲 {ctx.author.display_name} rolled a {roll}! Get Fucked!')
@@ -278,7 +279,7 @@ class Misc(commands.Cog):
         """Get a user's profile picture."""
         await ctx.send(user.display_avatar.url)
 
-    @commands.command()
+    @commands.hybrid_command()
     async def ben(self, ctx: commands.Context, *, content: str):
         """
         determines if ben is working or not given a day in the future
