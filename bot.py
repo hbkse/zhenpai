@@ -28,7 +28,8 @@ extensions = [
     # 'points',
     'voice_logging',
     'ten_minute_channel',
-    'riot'
+    'riot',
+    'draft_scheduling'
 ]
 
 def setup_intents():
