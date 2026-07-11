@@ -6,6 +6,7 @@ import pytz
 import time
 import asyncio
 import parsedatetime as pdt
+from discord import app_commands
 from discord.ext import commands
 from bot import Zhenpai
 
@@ -238,6 +239,8 @@ class Misc(commands.Cog):
             await confirm_msg.delete(delay=3)
 
     @commands.hybrid_command()
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     async def roll(self, ctx: commands.Context, n: int = 100):
         """Roll a number between 1 and n (default 100)."""
         roll = random.randint(1, n)
@@ -280,6 +283,8 @@ class Misc(commands.Cog):
         await ctx.send(user.display_avatar.url)
 
     @commands.hybrid_command()
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     async def ben(self, ctx: commands.Context, *, content: str):
         """
         determines if ben is working or not given a day in the future
