@@ -23,9 +23,9 @@ extensions = [
     'admin',
     # 'vxtwitter',
     'saturday',
-    'cs2',
+    # 'cs2',
     'users',
-    'points',
+    # 'points',
     'voice_logging',
     'ten_minute_channel',
     'riot'
