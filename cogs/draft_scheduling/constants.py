@@ -32,10 +32,7 @@ WEEKDAYS = {
     'sun': 6, 'sunday': 6,
 }
 
-DRAFT_TYPE_LABELS = {
-    'in_person': 'In person',
-    'online': 'Online',
-}
+DEFAULT_SESSION_NAME = 'Draft'
 
 
 def fmt_hour(hour: int) -> str:
@@ -50,6 +47,17 @@ def fmt_hour(hour: int) -> str:
 def fmt_day(d: datetime.date) -> str:
     """ 2026-07-17 -> 'Fri Jul 17' """
     return f"{d:%a %b} {d.day}"
+
+
+def describe_hours(hours, hour_start: int, hour_end: int) -> str:
+    """ Stored start hours -> the coarse label the user picked.
+        [12..22] -> 'anytime', [15..22] -> 'after 3 PM', [] -> "can't" """
+    if not hours:
+        return "can't"
+    hs = sorted(hours)
+    if hs == list(range(hs[0], hour_end + 1)):
+        return 'anytime' if hs[0] <= hour_start else f'after {fmt_hour(hs[0])}'
+    return ', '.join(fmt_hour(h) for h in hs)
 
 
 def local_slot_to_utc(day: datetime.date, hour: int) -> datetime.datetime:

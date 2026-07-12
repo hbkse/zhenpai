@@ -67,29 +67,37 @@ class AnnouncementView(ui.View):
             "Got it, you're marked as out this week. Click **Set availability** if that changes.",
             ephemeral=True)
         await self.cog.update_announcement(session.id)
+        await self.cog.maybe_decide_early(session.id)
+
+
+CHOICE_ANY = 'any'
+CHOICE_CANT = 'cant'
 
 
 class DaySelect(ui.Select):
-    """ One multi-select per candidate day. Options are start times. """
+    """ One single-select per candidate day: anytime / anytime after X / can't. """
 
     def __init__(self, picker: 'AvailabilityPicker', day: date, row: int):
         self.picker = picker
         self.day_iso = day.isoformat()
-        selected = set(picker.selections.get(self.day_iso, []))
+        current = picker.choice_for(self.day_iso)
         options = [
-            discord.SelectOption(label=fmt_hour(h), value=str(h), default=(h in selected))
-            for h in range(picker.session.hour_start, picker.session.hour_end + 1)
+            discord.SelectOption(label=label, value=value, default=(value == current))
+            for value, label in picker.day_choices()
         ]
         super().__init__(
-            placeholder=f"{fmt_day(day)} — pick every start time that works",
+            placeholder=f'{fmt_day(day)} — when could you start?',
             min_values=0,
-            max_values=len(options),
+            max_values=1,
             options=options,
             row=row,
         )
 
     async def callback(self, interaction: discord.Interaction):
-        self.picker.selections[self.day_iso] = sorted(int(v) for v in self.values)
+        if self.values:
+            self.picker.selections[self.day_iso] = self.picker.hours_for_choice(self.values[0])
+        else:
+            self.picker.selections.pop(self.day_iso, None)
         await interaction.response.defer()
 
 
@@ -118,7 +126,9 @@ class NoteModal(ui.Modal, title='Note for the organizer'):
 
 
 class AvailabilityPicker(ui.View):
-    """ Ephemeral, per-user picker. One select per day + submit/note buttons. """
+    """ Ephemeral, per-user picker. One select per day + submit/note buttons.
+        Choices are coarse (anytime / anytime after X / can't) but stored as
+        the expanded list of start hours, so the decision grid is unchanged. """
 
     def __init__(self, cog: 'DraftScheduling', session: DraftSession,
                  existing: Optional[DraftResponse]):
@@ -134,18 +144,45 @@ class AvailabilityPicker(ui.View):
         for i, day in enumerate(session.candidate_days):
             self.add_item(DaySelect(self, day, row=i))
 
+    def day_choices(self) -> List[tuple]:
+        """ (value, label) pairs shown in every day's select. """
+        choices = [(CHOICE_ANY, 'Anytime')]
+        choices += [(f'after:{h}', f'Anytime after {fmt_hour(h)}')
+                    for h in range(self.session.hour_start + 1, self.session.hour_end + 1)]
+        choices.append((CHOICE_CANT, "Can't make it"))
+        return choices
+
+    def hours_for_choice(self, value: str) -> List[int]:
+        if value == CHOICE_ANY:
+            return list(range(self.session.hour_start, self.session.hour_end + 1))
+        if value == CHOICE_CANT:
+            return []
+        return list(range(int(value.split(':')[1]), self.session.hour_end + 1))
+
+    def choice_for(self, day_iso: str) -> Optional[str]:
+        """ Map stored hours back to a choice value (for defaults and summaries). """
+        hours = self.selections.get(day_iso)
+        if hours is None:
+            return None
+        if not hours:
+            return CHOICE_CANT
+        if hours == list(range(hours[0], self.session.hour_end + 1)):
+            return CHOICE_ANY if hours[0] <= self.session.hour_start else f'after:{hours[0]}'
+        return None
+
     def instructions(self) -> str:
-        return ("Pick every start time you could make, per day. "
-                "Leave a day empty if it doesn't work. Hit **Submit** when done.")
+        return ("For each day, say when you could start. "
+                "Days you leave blank count as can't make it. Hit **Submit** when done.")
 
     def _summary(self) -> str:
+        labels = dict(self.day_choices())
         lines = []
         for day in self.session.candidate_days:
-            hours = self.selections.get(day.isoformat(), [])
-            if hours:
-                lines.append(f"**{fmt_day(day)}**: {', '.join(fmt_hour(h) for h in hours)}")
+            choice = self.choice_for(day.isoformat())
+            if choice and choice != CHOICE_CANT:
+                lines.append(f'**{fmt_day(day)}**: {labels[choice]}')
         if not lines:
-            return "no times selected"
+            return "no days selected"
         return '\n'.join(lines)
 
     @ui.button(label='Submit', style=discord.ButtonStyle.success, row=4)
@@ -159,7 +196,7 @@ class AvailabilityPicker(ui.View):
         availability = {d: hours for d, hours in self.selections.items() if hours}
         if not availability:
             await interaction.response.send_message(
-                "You didn't select any times — if none work, use **Out this week** instead.",
+                "No days work for you — if that's right, use **Out this week** instead.",
                 ephemeral=True)
             return
 
@@ -172,6 +209,7 @@ class AvailabilityPicker(ui.View):
             view=None)
         self.stop()
         await self.cog.update_announcement(self.session.id)
+        await self.cog.maybe_decide_early(self.session.id)
 
     @ui.button(label='Add note', style=discord.ButtonStyle.secondary, row=4)
     async def add_note(self, interaction: discord.Interaction, button: ui.Button):
@@ -190,14 +228,26 @@ class SlotSelect(ui.Select):
 
 
 class OrganizerDecisionView(ui.View):
-    """ DMed to the organizer when the bot can't auto-pick.
+    """ DMed to the organizer once all responses are in (or the deadline hits).
         Not persistent across restarts — /draft pick is the fallback. """
 
     def __init__(self, cog: 'DraftScheduling', session_id: int,
-                 slot_options: List[discord.SelectOption]):
+                 slot_options: List[discord.SelectOption],
+                 proposed: Optional[tuple] = None):
         super().__init__(timeout=None)
         self.cog = cog
         self.session_id = session_id
+        if proposed:
+            day_iso, hour = proposed
+
+            async def confirm_callback(interaction: discord.Interaction):
+                await self.resolve(interaction, day_iso, hour)
+
+            confirm = ui.Button(
+                label=f'Confirm {fmt_day(date.fromisoformat(day_iso))} {fmt_hour(hour)}',
+                style=discord.ButtonStyle.success, row=1)
+            confirm.callback = confirm_callback
+            self.add_item(confirm)
         if slot_options:
             self.add_item(SlotSelect(self, slot_options))
 

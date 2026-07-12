@@ -13,15 +13,16 @@ from .constants import (
     DEFAULT_DEADLINE_HOURS,
     DEFAULT_HOUR_END,
     DEFAULT_HOUR_START,
+    DEFAULT_SESSION_NAME,
     DRAFT_LENGTH_HOURS,
     DRAFT_TIMEZONE,
-    DRAFT_TYPE_LABELS,
     FIRST_DM_HOURS,
     LAST_CALL_HOURS_BEFORE_DEADLINE,
     MAX_CANDIDATE_DAYS,
     MIN_PLAYERS,
     SECOND_DM_HOURS,
     WEEKDAYS,
+    describe_hours,
     discord_timestamp,
     fmt_day,
     fmt_hour,
@@ -37,11 +38,11 @@ POLLING_INTERVAL_MINUTES = 5
 
 
 class DraftScheduling(commands.Cog):
-    """ Schedules weekly MTG drafts: collects availability, nags non-responders,
+    """ Schedules weekly drafts: collects availability, nags non-responders,
         auto-picks a slot when everyone who responded can make it, otherwise
         hands the decision to the organizer. """
 
-    draft = app_commands.Group(name='draft', description='MTG draft scheduling')
+    draft = app_commands.Group(name='draft', description='Draft scheduling')
 
     def __init__(self, bot: Zhenpai):
         self.bot = bot
@@ -67,21 +68,17 @@ class DraftScheduling(commands.Cog):
     @app_commands.describe(
         role='Role to ping for this draft',
         days='Comma-separated days, e.g. fri,sat,sun (max 4). Uses the next upcoming occurrence of each.',
-        draft_type='In person or online (default: in person)',
+        name='Display name for this draft (default "Draft")',
         deadline_hours='How long to collect availability before deciding (default 72h)',
         hour_start='Earliest selectable start time, 24h clock (default 12 = noon)',
         hour_end='Latest selectable start time, 24h clock (default 22 = 10 PM)',
     )
-    @app_commands.choices(draft_type=[
-        app_commands.Choice(name='In person', value='in_person'),
-        app_commands.Choice(name='Online', value='online'),
-    ])
     async def schedule(
         self,
         interaction: discord.Interaction,
         role: discord.Role,
         days: str,
-        draft_type: Optional[app_commands.Choice[str]] = None,
+        name: Optional[app_commands.Range[str, 1, 60]] = None,
         deadline_hours: Optional[app_commands.Range[int, 1, 336]] = None,
         hour_start: Optional[app_commands.Range[int, 0, 23]] = None,
         hour_end: Optional[app_commands.Range[int, 0, 23]] = None,
@@ -107,7 +104,7 @@ class DraftScheduling(commands.Cog):
             await interaction.response.send_message('hour_end must be >= hour_start.', ephemeral=True)
             return
 
-        dtype = draft_type.value if draft_type else 'in_person'
+        session_name = name.strip() if name and name.strip() else DEFAULT_SESSION_NAME
 
         now_utc = datetime.utcnow()
         deadline = now_utc + timedelta(hours=deadline_hours or DEFAULT_DEADLINE_HOURS)
@@ -121,13 +118,14 @@ class DraftScheduling(commands.Cog):
 
         session_id = await self.db.create_session(
             interaction.guild.id, interaction.channel.id, interaction.user.id, role.id,
-            dtype, candidate_days, h_start, h_end, deadline)
+            session_name, candidate_days, h_start, h_end, deadline)
         session = await self.db.get_session(session_id)
 
-        embed = self._announcement_embed(session, [])
+        expected = len([m for m in role.members if not m.bot])
+        embed = self._announcement_embed(session, [], waiting_count=expected)
         view = AnnouncementView(self, session_id)
         message = await interaction.channel.send(
-            content=f'{role.mention} time to schedule a draft!',
+            content=f'{role.mention} time to schedule **{session.name}**!',
             embed=embed,
             view=view,
             allowed_mentions=discord.AllowedMentions(roles=True),
@@ -147,7 +145,8 @@ class DraftScheduling(commands.Cog):
             await interaction.response.send_message('No draft sessions in this channel yet.', ephemeral=True)
             return
         responses = await self.db.get_responses(session.id)
-        embed = self._grid_embed(session, responses)
+        non_responders = await self._non_responders(session)
+        embed = self._grid_embed(session, responses, non_responders)
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @draft.command(name='pick', description='(Organizer) Manually lock in a slot for the latest draft in this channel')
@@ -190,22 +189,40 @@ class DraftScheduling(commands.Cog):
     # ---------- decision + finalize ----------
 
     async def run_decision(self, session: DraftSession):
-        """ Called at deadline. Auto-pick if a slot works for every responder and
-            we have enough players; otherwise DM the organizer a summary. """
+        """ Called at deadline, or early once everyone in the role has responded.
+            Never announces on its own: proposes a slot (if one works for every
+            responder and enough are in) and waits for the organizer to confirm. """
         responses = await self.db.get_responses(session.id)
         responders, grid = self._build_grid(responses)
 
         universal = [slot for slot, users in grid.items() if len(users) == len(responders)]
+        proposed = None
         if responders and len(responders) >= MIN_PLAYERS and universal:
-            day_iso, hour = min(universal)  # earliest day, earliest hour
-            log.info('Session %d: auto-picking %s %s', session.id, day_iso, hour)
-            await self.finalize(session, day_iso, hour, auto=True)
-            return
+            proposed = min(universal)  # earliest day, earliest hour
 
-        log.info('Session %d: needs organizer (%d responders, %d universal slots)',
-                 session.id, len(responders), len(universal))
+        log.info('Session %d: handing to organizer (%d responders, %d universal slots, proposed=%s)',
+                 session.id, len(responders), len(universal), proposed)
         await self.db.set_status(session.id, 'needs_organizer')
-        await self._send_organizer_summary(session, responses, grid, len(responders))
+        await self._send_organizer_summary(session, responses, grid, len(responders), proposed)
+
+    async def maybe_decide_early(self, session_id: int):
+        """ Called after every response: if everyone in the role has now responded,
+            don't wait for the deadline. """
+        session = await self.db.get_session(session_id)
+        if not session or session.status != 'collecting':
+            return
+        guild = self.bot.get_guild(session.guild_id)
+        role = guild.get_role(session.role_id) if guild else None
+        if not role:
+            return
+        expected = {m.id for m in role.members if not m.bot}
+        if not expected:
+            return
+        responses = await self.db.get_responses(session.id)
+        if expected - {r.user_id for r in responses}:
+            return
+        log.info('Session %d: everyone responded, deciding early', session.id)
+        await self.run_decision(session)
 
     async def finalize(self, session: DraftSession, day_iso: str, hour: int, auto: bool):
         responses = await self.db.get_responses(session.id)
@@ -216,17 +233,16 @@ class DraftScheduling(commands.Cog):
         await self.db.set_picked(session.id, slot_utc)
         await self._disable_announcement_buttons(session)
 
-        type_label = DRAFT_TYPE_LABELS.get(session.draft_type, session.draft_type)
         mentions = ' '.join(f'<@{uid}>' for uid in attendees) or '(nobody?!)'
         how = 'Everyone who responded can make it' if auto else 'The organizer picked'
         channel = self.bot.get_channel(session.channel_id)
         if channel:
             await channel.send(
-                f'🃏 **Draft locked in: {discord_timestamp(slot_utc)}** ({type_label})\n'
+                f'🃏 **{session.name} locked in: {discord_timestamp(slot_utc)}**\n'
                 f'{how} — see you there: {mentions}',
                 allowed_mentions=discord.AllowedMentions(users=True))
 
-        await self._create_scheduled_event(session, slot_utc, type_label)
+        await self._create_scheduled_event(session, slot_utc)
 
     async def cancel_session(self, session: DraftSession, announce: bool):
         await self.db.set_status(session.id, 'cancelled')
@@ -234,20 +250,31 @@ class DraftScheduling(commands.Cog):
         if announce:
             channel = self.bot.get_channel(session.channel_id)
             if channel:
-                await channel.send('🃏 No draft this week — scheduling was cancelled. See you next time!')
+                await channel.send(f'🃏 **{session.name}** is off — scheduling was cancelled. See you next time!')
 
     async def _send_organizer_summary(self, session: DraftSession, responses: List[DraftResponse],
-                                      grid: Dict[Tuple[str, int], Set[int]], responder_count: int):
+                                      grid: Dict[Tuple[str, int], Set[int]], responder_count: int,
+                                      proposed: Optional[Tuple[str, int]]):
         organizer = self.bot.get_user(session.organizer_id)
         if not organizer:
             log.warning('Session %d: could not find organizer %d', session.id, session.organizer_id)
             return
 
-        if responder_count < MIN_PLAYERS:
-            reason = f'only **{responder_count}** people are in (need {MIN_PLAYERS})'
+        non_responders = await self._non_responders(session)
+        lead = ('All responses are in' if not non_responders
+                else f'Deadline hit ({len(non_responders)} never responded)')
+        if proposed:
+            day_iso, hour = proposed
+            ask = (f'**{fmt_day(date.fromisoformat(day_iso))} {fmt_hour(hour)}** works for all '
+                   f'{responder_count} responders. Confirm below to announce it and create the event, '
+                   f'pick a different slot, or cancel the week.')
+        elif responder_count < MIN_PLAYERS:
+            ask = (f'No slot to propose: only **{responder_count}** people are in (need {MIN_PLAYERS}). '
+                   f'Pick a slot anyway, or cancel the week.')
         else:
-            reason = 'no single slot works for everyone who responded'
-        embed = self._grid_embed(session, responses)
+            ask = ('No slot to propose: no single time works for everyone who responded. '
+                   'Pick a slot below, or cancel the week.')
+        embed = self._grid_embed(session, responses, non_responders)
 
         # Top slots by attendance for the quick-pick dropdown.
         ranked = sorted(grid.items(), key=lambda kv: (-len(kv[1]), kv[0]))[:25]
@@ -257,36 +284,37 @@ class DraftScheduling(commands.Cog):
                 value=f'{d}|{h}')
             for (d, h), users in ranked
         ]
-        view = OrganizerDecisionView(self, session.id, options)
+        view = OrganizerDecisionView(self, session.id, options, proposed)
         try:
             await organizer.send(
-                content=f"I couldn't auto-pick for draft session #{session.id}: {reason}.\n"
-                        f'Pick a slot below, cancel the week, or use `/draft pick` in the channel '
-                        f'(that also works if this menu dies to a bot restart).',
+                content=f'{lead} for **{session.name}** (session #{session.id}). {ask}\n'
+                        f'-# `/draft pick` in the channel also works, e.g. if this menu dies to a bot restart.',
                 embed=embed, view=view)
         except discord.Forbidden:
             channel = self.bot.get_channel(session.channel_id)
             if channel:
                 await channel.send(
-                    f"<@{session.organizer_id}> I couldn't auto-pick ({reason}) and your DMs are closed — "
-                    f'use `/draft status` and `/draft pick` here.',
+                    f'<@{session.organizer_id}> {lead} for **{session.name}** and your DMs are closed — '
+                    f'use `/draft status` and `/draft pick` here to lock in a slot.',
                     allowed_mentions=discord.AllowedMentions(users=True))
 
-    async def _create_scheduled_event(self, session: DraftSession, slot_utc: datetime, type_label: str):
+    async def _create_scheduled_event(self, session: DraftSession, slot_utc: datetime):
         guild = self.bot.get_guild(session.guild_id)
         if not guild:
             return
         start = pytz.utc.localize(slot_utc)
         if start <= discord.utils.utcnow():
             return
+        channel = self.bot.get_channel(session.channel_id)
+        location = f'#{channel.name}' if channel else 'TBD'
         try:
             await guild.create_scheduled_event(
-                name=f'MTG Draft ({type_label})',
+                name=session.name,
                 start_time=start,
                 end_time=start + timedelta(hours=DRAFT_LENGTH_HOURS),
                 entity_type=discord.EntityType.external,
                 privacy_level=discord.PrivacyLevel.guild_only,
-                location=type_label,
+                location=location,
                 description='Scheduled by zhenpai draft scheduling.',
             )
         except discord.Forbidden:
@@ -350,7 +378,7 @@ class DraftScheduling(commands.Cog):
         for member in members:
             try:
                 await member.send(
-                    f"👋 Friendly reminder to set your availability for this week's draft "
+                    f'👋 Friendly reminder to set your availability for **{session.name}** '
                     f'(deciding {discord_timestamp(session.deadline, "R")}): {self._jump_url(session)}')
             except discord.Forbidden:
                 log.info('Session %d: cannot DM %d', session.id, member.id)
@@ -366,7 +394,7 @@ class DraftScheduling(commands.Cog):
             return
         mentions = ' '.join(m.mention for m in members)
         await channel.send(
-            f'⏰ Last call for draft availability — deciding {discord_timestamp(session.deadline, "R")}. '
+            f'⏰ Last call for **{session.name}** availability — deciding {discord_timestamp(session.deadline, "R")}. '
             f'Still waiting on: {mentions}',
             allowed_mentions=discord.AllowedMentions(users=True))
 
@@ -384,7 +412,7 @@ class DraftScheduling(commands.Cog):
         if channel and attendees:
             mentions = ' '.join(f'<@{uid}>' for uid in attendees)
             await channel.send(
-                f'🃏 Draft starts {discord_timestamp(session.picked_slot, "R")}! {mentions}',
+                f'🃏 **{session.name}** starts {discord_timestamp(session.picked_slot, "R")}! {mentions}',
                 allowed_mentions=discord.AllowedMentions(users=True))
         await self.db.set_day_of_reminder_sent(session.id)
 
@@ -433,29 +461,32 @@ class DraftScheduling(commands.Cog):
                     grid.setdefault((day_iso, h), set()).add(r.user_id)
         return responders, grid
 
-    def _announcement_embed(self, session: DraftSession, responses: List[DraftResponse]) -> discord.Embed:
-        type_label = DRAFT_TYPE_LABELS.get(session.draft_type, session.draft_type)
+    def _announcement_embed(self, session: DraftSession, responses: List[DraftResponse],
+                            waiting_count: Optional[int] = None) -> discord.Embed:
         responders = [r for r in responses if not r.is_out and r.availability]
         outs = [r for r in responses if r.is_out]
         days_line = ', '.join(fmt_day(d) for d in session.candidate_days)
         embed = discord.Embed(
-            title=f'🃏 Scheduling a draft — {type_label}',
+            title=f'🃏 Scheduling: {session.name}',
             description=(
                 f'**Candidate days:** {days_line}\n'
                 f'**Deciding:** {discord_timestamp(session.deadline)} '
                 f'({discord_timestamp(session.deadline, "R")})\n\n'
-                f'Click **Set availability** and pick every start time you could make. '
+                f'Click **Set availability** and say when you could make it each day. '
                 f"Can't make it at all? **Out this week** is one click."
             ),
             color=discord.Color.blurple(),
         )
         embed.add_field(name='Responded', value=str(len(responders)))
         embed.add_field(name='Out', value=str(len(outs)))
-        embed.set_footer(text=f'Session #{session.id} • auto-picks if everyone who responded '
-                              f'shares a slot and {MIN_PLAYERS}+ are in')
+        if waiting_count is not None:
+            embed.add_field(name='Waiting on', value=str(waiting_count))
+        embed.set_footer(text=f'Session #{session.id} • the organizer confirms a time once '
+                              f'everyone responds or the deadline hits')
         return embed
 
-    def _grid_embed(self, session: DraftSession, responses: List[DraftResponse]) -> discord.Embed:
+    def _grid_embed(self, session: DraftSession, responses: List[DraftResponse],
+                    non_responders: Optional[List[discord.Member]] = None) -> discord.Embed:
         responders, grid = self._build_grid(responses)
         outs = [r for r in responses if r.is_out]
         guild = self.bot.get_guild(session.guild_id)
@@ -464,24 +495,35 @@ class DraftScheduling(commands.Cog):
             member = guild.get_member(uid) if guild else None
             return member.display_name if member else f'<{uid}>'
 
+        description = ''
+        if grid:
+            (day_iso, hour), users = sorted(grid.items(), key=lambda kv: (-len(kv[1]), kv[0]))[0]
+            everyone = ' — works for everyone' if len(users) == len(responders) else ''
+            description = (f'Best slot: **{fmt_day(date.fromisoformat(day_iso))} {fmt_hour(hour)}** '
+                           f'({len(users)}/{len(responders)} responders{everyone})')
+
         embed = discord.Embed(
-            title=f'Draft session #{session.id} — {len(responders)} in, {len(outs)} out',
+            title=f'{session.name} (session #{session.id}) — {len(responders)} in, {len(outs)} out',
+            description=description,
             color=discord.Color.blurple(),
         )
         for day in session.candidate_days:
             day_iso = day.isoformat()
-            lines = []
-            for hour in range(session.hour_start, session.hour_end + 1):
-                users = grid.get((day_iso, hour))
-                if users:
-                    everyone = ' ✅' if len(users) == len(responders) and len(responders) >= MIN_PLAYERS else ''
-                    lines.append(f'**{fmt_hour(hour)}** — {len(users)}{everyone}: '
-                                 f'{", ".join(sorted(name(u) for u in users))}')
-            embed.add_field(name=fmt_day(day), value='\n'.join(lines)[:1024] or '*nobody yet*', inline=False)
+            lines = [f'**{name(r.user_id)}** — '
+                     f'{describe_hours(r.availability.get(day_iso, []), session.hour_start, session.hour_end)}'
+                     for r in responders if r.availability.get(day_iso)]
+            embed.add_field(name=fmt_day(day), value='\n'.join(lines)[:1024] or '*nobody available*', inline=False)
 
+        if outs:
+            embed.add_field(name=f'❌ Out ({len(outs)})',
+                            value=', '.join(sorted(name(r.user_id) for r in outs))[:1024], inline=False)
         notes = [f'**{name(r.user_id)}**: {r.note}' for r in responses if r.note]
         if notes:
             embed.add_field(name='📝 Notes', value='\n'.join(notes)[:1024], inline=False)
+        if non_responders:
+            names = ', '.join(sorted(m.display_name for m in non_responders))
+            embed.add_field(name=f'⏳ No response ({len(non_responders)})',
+                            value=names[:1024], inline=False)
         if session.status == 'decided' and session.picked_slot:
             embed.add_field(name='Locked in', value=discord_timestamp(session.picked_slot), inline=False)
         return embed
@@ -497,7 +539,8 @@ class DraftScheduling(commands.Cog):
                 return
             message = await channel.fetch_message(session.announcement_message_id)
             responses = await self.db.get_responses(session_id)
-            await message.edit(embed=self._announcement_embed(session, responses))
+            waiting = len(await self._non_responders(session))
+            await message.edit(embed=self._announcement_embed(session, responses, waiting_count=waiting))
         except discord.HTTPException as e:
             log.warning('Session %d: failed to update announcement: %s', session_id, e)
 

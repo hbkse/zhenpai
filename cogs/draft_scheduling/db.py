@@ -17,7 +17,7 @@ class DraftSession:
     announcement_message_id: Optional[int]
     organizer_id: int
     role_id: int
-    draft_type: str
+    name: str
     candidate_days: List[date]
     hour_start: int
     hour_end: int
@@ -37,7 +37,7 @@ class DraftSession:
             announcement_message_id=row['announcement_message_id'],
             organizer_id=row['organizer_id'],
             role_id=row['role_id'],
-            draft_type=row['draft_type'],
+            name=row['name'],
             candidate_days=[date.fromisoformat(s) for s in row['candidate_days'].split(',') if s],
             hour_start=row['hour_start'],
             hour_end=row['hour_end'],
@@ -78,17 +78,17 @@ class DraftSchedulingDb:
         self.pool = pool
 
     async def create_session(self, guild_id: int, channel_id: int, organizer_id: int, role_id: int,
-                             draft_type: str, candidate_days: List[date], hour_start: int,
+                             name: str, candidate_days: List[date], hour_start: int,
                              hour_end: int, deadline: datetime) -> int:
         query = """
             INSERT INTO draft_sessions
-                (guild_id, channel_id, organizer_id, role_id, draft_type, candidate_days, hour_start, hour_end, deadline)
+                (guild_id, channel_id, organizer_id, role_id, name, candidate_days, hour_start, hour_end, deadline)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
             RETURNING id
         """
         days_str = ','.join(d.isoformat() for d in candidate_days)
         return await self.pool.fetchval(query, guild_id, channel_id, organizer_id, role_id,
-                                        draft_type, days_str, hour_start, hour_end, deadline)
+                                        name, days_str, hour_start, hour_end, deadline)
 
     async def set_announcement_message(self, session_id: int, message_id: int):
         await self.pool.execute(
