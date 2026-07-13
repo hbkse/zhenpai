@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional
 import discord
 from discord import ui
 
-from .constants import fmt_day, fmt_hour
+from .constants import TIMEZONE_LABEL, fmt_day, fmt_hour
 from .db import DraftResponse, DraftSession
 
 if TYPE_CHECKING:
@@ -118,7 +118,7 @@ class NoteModal(ui.Modal, title='Note for the organizer'):
     async def on_submit(self, interaction: discord.Interaction):
         self.picker.note = self.note.value.strip() or None
         try:
-            suffix = " *(note attached ✏️)*" if self.picker.note else ""
+            suffix = " *(note attached)*" if self.picker.note else ""
             await interaction.response.edit_message(
                 content=self.picker.instructions() + suffix, view=self.picker)
         except discord.HTTPException:
@@ -146,10 +146,9 @@ class AvailabilityPicker(ui.View):
 
     def day_choices(self) -> List[tuple]:
         """ (value, label) pairs shown in every day's select. """
-        choices = [(CHOICE_ANY, 'Anytime')]
+        choices = [(CHOICE_ANY, 'Anytime'), (CHOICE_CANT, "Can't make it")]
         choices += [(f'after:{h}', f'Anytime after {fmt_hour(h)}')
                     for h in range(self.session.hour_start + 1, self.session.hour_end + 1)]
-        choices.append((CHOICE_CANT, "Can't make it"))
         return choices
 
     def hours_for_choice(self, value: str) -> List[int]:
@@ -171,8 +170,8 @@ class AvailabilityPicker(ui.View):
         return None
 
     def instructions(self) -> str:
-        return ("For each day, say when you could start. "
-                "Days you leave blank count as can't make it. Hit **Submit** when done.")
+        return (f"For each day, say when you could start (times are {TIMEZONE_LABEL}). "
+                f"Days you leave blank count as can't make it. Hit **Submit** when done.")
 
     def _summary(self) -> str:
         labels = dict(self.day_choices())
@@ -202,9 +201,9 @@ class AvailabilityPicker(ui.View):
 
         await self.cog.db.upsert_availability(
             self.session.id, interaction.user.id, availability, self.note)
-        note_line = f"\n📝 Note: *{self.note}*" if self.note else ""
+        note_line = f"\nNote: *{self.note}*" if self.note else ""
         await interaction.response.edit_message(
-            content=f"✅ Availability saved:\n{self._summary()}{note_line}\n\n"
+            content=f"Availability saved:\n{self._summary()}{note_line}\n\n"
                     f"You can click **Set availability** again any time before the deadline to change it.",
             view=None)
         self.stop()

@@ -104,21 +104,14 @@ class DraftSchedulingDb:
             "SELECT * FROM draft_sessions WHERE status = ANY($1::text[]) ORDER BY id", statuses)
         return [DraftSession.from_row(r) for r in rows]
 
-    async def get_latest_session_in_channel(self, guild_id: int, channel_id: int,
-                                            statuses: Optional[List[str]] = None) -> Optional[DraftSession]:
-        if statuses:
-            row = await self.pool.fetchrow(
-                """SELECT * FROM draft_sessions
-                   WHERE guild_id = $1 AND channel_id = $2 AND status = ANY($3::text[])
-                   ORDER BY id DESC LIMIT 1""",
-                guild_id, channel_id, statuses)
-        else:
-            row = await self.pool.fetchrow(
-                """SELECT * FROM draft_sessions
-                   WHERE guild_id = $1 AND channel_id = $2
-                   ORDER BY id DESC LIMIT 1""",
-                guild_id, channel_id)
-        return DraftSession.from_row(row) if row else None
+    async def get_sessions_in_channel(self, guild_id: int, channel_id: int,
+                                      statuses: List[str]) -> List[DraftSession]:
+        rows = await self.pool.fetch(
+            """SELECT * FROM draft_sessions
+               WHERE guild_id = $1 AND channel_id = $2 AND status = ANY($3::text[])
+               ORDER BY id DESC""",
+            guild_id, channel_id, statuses)
+        return [DraftSession.from_row(r) for r in rows]
 
     async def set_status(self, session_id: int, status: str):
         await self.pool.execute("UPDATE draft_sessions SET status = $2 WHERE id = $1", session_id, status)

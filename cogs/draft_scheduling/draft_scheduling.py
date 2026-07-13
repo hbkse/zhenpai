@@ -1,4 +1,5 @@
 import logging
+import re
 from datetime import datetime, date, timedelta
 from typing import Dict, List, Optional, Set, Tuple
 
@@ -21,6 +22,7 @@ from .constants import (
     MAX_CANDIDATE_DAYS,
     MIN_PLAYERS,
     SECOND_DM_HOURS,
+    TIMEZONE_LABEL,
     WEEKDAYS,
     describe_hours,
     discord_timestamp,
@@ -35,6 +37,7 @@ from .views import AnnouncementView, OrganizerDecisionView
 log: logging.Logger = logging.getLogger(__name__)
 
 POLLING_INTERVAL_MINUTES = 5
+ACTIVE_STATUSES = ['collecting', 'needs_organizer', 'decided']
 
 
 class DraftScheduling(commands.Cog):
@@ -42,7 +45,7 @@ class DraftScheduling(commands.Cog):
         auto-picks a slot when everyone who responded can make it, otherwise
         hands the decision to the organizer. """
 
-    draft = app_commands.Group(name='draft', description='Draft scheduling')
+    draft = app_commands.Group(name='draft', description='Draft scheduling', guild_only=True)
 
     def __init__(self, bot: Zhenpai):
         self.bot = bot
@@ -62,13 +65,55 @@ class DraftScheduling(commands.Cog):
     def cog_unload(self):
         self.tick.cancel()
 
+    # ---------- session resolution (multiple can be active per channel) ----------
+
+    async def session_autocomplete(self, interaction: discord.Interaction,
+                                   current: str) -> List[app_commands.Choice[str]]:
+        if not interaction.guild:
+            return []
+        sessions = await self.db.get_sessions_in_channel(
+            interaction.guild.id, interaction.channel.id, ACTIVE_STATUSES)
+        current = current.lower()
+        choices = []
+        for s in sessions:
+            label = f'{s.name} ({", ".join(fmt_day(d) for d in s.candidate_days)})'
+            if current in label.lower():
+                choices.append(app_commands.Choice(name=label[:100], value=str(s.id)))
+        return choices[:25]
+
+    async def _resolve_session(self, interaction: discord.Interaction, draft: Optional[str],
+                               statuses: List[str]) -> Optional[DraftSession]:
+        """ Find the targeted session, replying with an error if it's ambiguous or missing. """
+        sessions = await self.db.get_sessions_in_channel(
+            interaction.guild.id, interaction.channel.id, statuses)
+        if not sessions:
+            await interaction.response.send_message('No active draft in this channel.', ephemeral=True)
+            return None
+        if draft:
+            token = draft.strip().lower()
+            matches = [s for s in sessions if str(s.id) == token or s.name.lower() == token]
+            if not matches:
+                matches = [s for s in sessions if token in s.name.lower()]
+            if not matches:
+                await interaction.response.send_message(
+                    f"No draft here matches '{draft}'. Active: {', '.join(s.name for s in sessions)}",
+                    ephemeral=True)
+                return None
+            return matches[0]  # newest first
+        if len(sessions) > 1:
+            await interaction.response.send_message(
+                f"Multiple drafts are active here: {', '.join(s.name for s in sessions)}. "
+                f'Use the `draft` option to say which one.', ephemeral=True)
+            return None
+        return sessions[0]
+
     # ---------- commands ----------
 
     @draft.command(name='schedule', description='Kick off scheduling for a draft')
     @app_commands.describe(
+        name='Display name for this draft',
         role='Role to ping for this draft',
-        days='Comma-separated days, e.g. fri,sat,sun (max 4). Uses the next upcoming occurrence of each.',
-        name='Display name for this draft (default "Draft")',
+        dates='Comma-separated dates, e.g. 7/17,7/18,7/19 (max 4)',
         deadline_hours='How long to collect availability before deciding (default 72h)',
         hour_start='Earliest selectable start time, 24h clock (default 12 = noon)',
         hour_end='Latest selectable start time, 24h clock (default 22 = 10 PM)',
@@ -76,9 +121,9 @@ class DraftScheduling(commands.Cog):
     async def schedule(
         self,
         interaction: discord.Interaction,
+        name: app_commands.Range[str, 1, 60],
         role: discord.Role,
-        days: str,
-        name: Optional[app_commands.Range[str, 1, 60]] = None,
+        dates: str,
         deadline_hours: Optional[app_commands.Range[int, 1, 336]] = None,
         hour_start: Optional[app_commands.Range[int, 0, 23]] = None,
         hour_end: Optional[app_commands.Range[int, 0, 23]] = None,
@@ -87,10 +132,10 @@ class DraftScheduling(commands.Cog):
             await interaction.response.send_message('This only works in a server.', ephemeral=True)
             return
 
-        candidate_days = self._parse_days(days)
+        candidate_days = self._parse_dates(dates)
         if candidate_days is None:
             await interaction.response.send_message(
-                "I couldn't parse those days. Use comma-separated day names, e.g. `fri,sat,sun`.",
+                "I couldn't parse those dates. Use comma-separated month/day, e.g. `7/17,7/18,7/19`.",
                 ephemeral=True)
             return
         if len(candidate_days) > MAX_CANDIDATE_DAYS:
@@ -104,7 +149,7 @@ class DraftScheduling(commands.Cog):
             await interaction.response.send_message('hour_end must be >= hour_start.', ephemeral=True)
             return
 
-        session_name = name.strip() if name and name.strip() else DEFAULT_SESSION_NAME
+        session_name = name.strip() or DEFAULT_SESSION_NAME
 
         now_utc = datetime.utcnow()
         deadline = now_utc + timedelta(hours=deadline_hours or DEFAULT_DEADLINE_HOURS)
@@ -134,29 +179,31 @@ class DraftScheduling(commands.Cog):
         self.bot.add_view(view, message_id=message.id)
 
         await interaction.followup.send(
-            f'Draft scheduling kicked off (session #{session_id}). '
+            f'Scheduling kicked off for **{session.name}**. '
             f'Deciding {discord_timestamp(deadline, "R")}.', ephemeral=True)
 
-    @draft.command(name='status', description='Show current availability for the latest draft in this channel')
-    async def status(self, interaction: discord.Interaction):
-        session = await self.db.get_latest_session_in_channel(
-            interaction.guild.id, interaction.channel.id)
+    @draft.command(name='status', description="Show everyone's current responses for a draft")
+    @app_commands.describe(draft='Which draft (leave blank if only one is active here)')
+    @app_commands.autocomplete(draft=session_autocomplete)
+    async def status(self, interaction: discord.Interaction, draft: Optional[str] = None):
+        session = await self._resolve_session(interaction, draft, ACTIVE_STATUSES)
         if not session:
-            await interaction.response.send_message('No draft sessions in this channel yet.', ephemeral=True)
             return
         responses = await self.db.get_responses(session.id)
         non_responders = await self._non_responders(session)
         embed = self._grid_embed(session, responses, non_responders)
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    @draft.command(name='pick', description='(Organizer) Manually lock in a slot for the latest draft in this channel')
-    @app_commands.describe(day='One of the candidate days, e.g. fri', hour='Start hour, 24h clock, e.g. 20')
+    @draft.command(name='pick', description='(Organizer) Manually lock in a slot for a draft')
+    @app_commands.describe(day='One of the candidate dates, e.g. 7/17 or fri',
+                           hour='Start hour, 24h clock, e.g. 20',
+                           draft='Which draft (leave blank if only one is active here)')
+    @app_commands.autocomplete(draft=session_autocomplete)
     async def pick(self, interaction: discord.Interaction, day: str,
-                   hour: app_commands.Range[int, 0, 23]):
-        session = await self.db.get_latest_session_in_channel(
-            interaction.guild.id, interaction.channel.id, ['collecting', 'needs_organizer'])
+                   hour: app_commands.Range[int, 0, 23],
+                   draft: Optional[str] = None):
+        session = await self._resolve_session(interaction, draft, ['collecting', 'needs_organizer'])
         if not session:
-            await interaction.response.send_message('No active draft session in this channel.', ephemeral=True)
             return
         if not self._can_manage(interaction, session):
             await interaction.response.send_message('Only the organizer (or a server manager) can do that.', ephemeral=True)
@@ -173,17 +220,17 @@ class DraftScheduling(commands.Cog):
             f'Locking in **{fmt_day(matched)} {fmt_hour(hour)}**.', ephemeral=True)
         await self.finalize(session, matched.isoformat(), hour, auto=False)
 
-    @draft.command(name='cancel', description='(Organizer) Cancel the latest active draft in this channel')
-    async def cancel(self, interaction: discord.Interaction):
-        session = await self.db.get_latest_session_in_channel(
-            interaction.guild.id, interaction.channel.id, ['collecting', 'needs_organizer', 'decided'])
+    @draft.command(name='cancel', description='(Organizer) Cancel a draft entirely')
+    @app_commands.describe(draft='Which draft (leave blank if only one is active here)')
+    @app_commands.autocomplete(draft=session_autocomplete)
+    async def cancel(self, interaction: discord.Interaction, draft: Optional[str] = None):
+        session = await self._resolve_session(interaction, draft, ACTIVE_STATUSES)
         if not session:
-            await interaction.response.send_message('No active draft session in this channel.', ephemeral=True)
             return
         if not self._can_manage(interaction, session):
             await interaction.response.send_message('Only the organizer (or a server manager) can do that.', ephemeral=True)
             return
-        await interaction.response.send_message(f'Cancelled session #{session.id}.', ephemeral=True)
+        await interaction.response.send_message(f'Cancelled **{session.name}**.', ephemeral=True)
         await self.cancel_session(session, announce=True)
 
     # ---------- decision + finalize ----------
@@ -238,7 +285,7 @@ class DraftScheduling(commands.Cog):
         channel = self.bot.get_channel(session.channel_id)
         if channel:
             await channel.send(
-                f'🃏 **{session.name} locked in: {discord_timestamp(slot_utc)}**\n'
+                f'**{session.name} locked in: {discord_timestamp(slot_utc)}**\n'
                 f'{how} — see you there: {mentions}',
                 allowed_mentions=discord.AllowedMentions(users=True))
 
@@ -250,7 +297,7 @@ class DraftScheduling(commands.Cog):
         if announce:
             channel = self.bot.get_channel(session.channel_id)
             if channel:
-                await channel.send(f'🃏 **{session.name}** is off — scheduling was cancelled. See you next time!')
+                await channel.send(f'**{session.name}** is off — scheduling was cancelled. See you next time!')
 
     async def _send_organizer_summary(self, session: DraftSession, responses: List[DraftResponse],
                                       grid: Dict[Tuple[str, int], Set[int]], responder_count: int,
@@ -287,7 +334,7 @@ class DraftScheduling(commands.Cog):
         view = OrganizerDecisionView(self, session.id, options, proposed)
         try:
             await organizer.send(
-                content=f'{lead} for **{session.name}** (session #{session.id}). {ask}\n'
+                content=f'{lead} for **{session.name}**. {ask}\n'
                         f'-# `/draft pick` in the channel also works, e.g. if this menu dies to a bot restart.',
                 embed=embed, view=view)
         except discord.Forbidden:
@@ -378,7 +425,7 @@ class DraftScheduling(commands.Cog):
         for member in members:
             try:
                 await member.send(
-                    f'👋 Friendly reminder to set your availability for **{session.name}** '
+                    f'Friendly reminder to set your availability for **{session.name}** '
                     f'(deciding {discord_timestamp(session.deadline, "R")}): {self._jump_url(session)}')
             except discord.Forbidden:
                 log.info('Session %d: cannot DM %d', session.id, member.id)
@@ -394,7 +441,7 @@ class DraftScheduling(commands.Cog):
             return
         mentions = ' '.join(m.mention for m in members)
         await channel.send(
-            f'⏰ Last call for **{session.name}** availability — deciding {discord_timestamp(session.deadline, "R")}. '
+            f'Last call for **{session.name}** availability — deciding {discord_timestamp(session.deadline, "R")}. '
             f'Still waiting on: {mentions}',
             allowed_mentions=discord.AllowedMentions(users=True))
 
@@ -412,31 +459,35 @@ class DraftScheduling(commands.Cog):
         if channel and attendees:
             mentions = ' '.join(f'<@{uid}>' for uid in attendees)
             await channel.send(
-                f'🃏 **{session.name}** starts {discord_timestamp(session.picked_slot, "R")}! {mentions}',
+                f'**{session.name}** starts {discord_timestamp(session.picked_slot, "R")}! {mentions}',
                 allowed_mentions=discord.AllowedMentions(users=True))
         await self.db.set_day_of_reminder_sent(session.id)
 
     # ---------- helpers ----------
 
-    def _parse_days(self, days_input: str) -> Optional[List[date]]:
-        """ 'fri,sat,sun' -> next upcoming occurrence of each (1-7 days out), sorted. """
+    def _parse_dates(self, dates_input: str) -> Optional[List[date]]:
+        """ Comma-separated M/D, e.g. '7/17,7/18' -> sorted dates (today allowed).
+            Dates that already passed this year roll to next year. """
         today = datetime.now(DRAFT_TIMEZONE).date()
         result = []
-        for token in days_input.split(','):
-            token = token.strip().lower()
-            if token not in WEEKDAYS:
+        for token in dates_input.split(','):
+            m = re.match(r'^(\d{1,2})/(\d{1,2})$', token.strip())
+            if not m:
                 return None
-            target = WEEKDAYS[token]
-            offset = (target - today.weekday() - 1) % 7 + 1  # 1..7 days out
-            candidate = today + timedelta(days=offset)
-            if candidate not in result:
-                result.append(candidate)
+            try:
+                parsed = date(today.year, int(m.group(1)), int(m.group(2)))
+                if parsed < today:
+                    parsed = date(today.year + 1, parsed.month, parsed.day)
+            except ValueError:
+                return None
+            if parsed not in result:
+                result.append(parsed)
         return sorted(result) if result else None
 
     def _match_candidate_day(self, session: DraftSession, day_input: str) -> Optional[date]:
         token = day_input.strip().lower()
         for d in session.candidate_days:
-            if token in (d.isoformat(), f'{d:%a}'.lower(), f'{d:%A}'.lower()):
+            if token in (f'{d.month}/{d.day}', d.isoformat(), f'{d:%a}'.lower(), f'{d:%A}'.lower()):
                 return d
         if token in WEEKDAYS:
             for d in session.candidate_days:
@@ -467,7 +518,7 @@ class DraftScheduling(commands.Cog):
         outs = [r for r in responses if r.is_out]
         days_line = ', '.join(fmt_day(d) for d in session.candidate_days)
         embed = discord.Embed(
-            title=f'🃏 Scheduling: {session.name}',
+            title=f'Scheduling: {session.name}',
             description=(
                 f'**Candidate days:** {days_line}\n'
                 f'**Deciding:** {discord_timestamp(session.deadline)} '
@@ -481,8 +532,8 @@ class DraftScheduling(commands.Cog):
         embed.add_field(name='Out', value=str(len(outs)))
         if waiting_count is not None:
             embed.add_field(name='Waiting on', value=str(waiting_count))
-        embed.set_footer(text=f'Session #{session.id} • the organizer confirms a time once '
-                              f'everyone responds or the deadline hits')
+        embed.set_footer(text=f'The organizer confirms a time once everyone responds or the '
+                              f'deadline hits • listed times are {TIMEZONE_LABEL}')
         return embed
 
     def _grid_embed(self, session: DraftSession, responses: List[DraftResponse],
@@ -503,10 +554,11 @@ class DraftScheduling(commands.Cog):
                            f'({len(users)}/{len(responders)} responders{everyone})')
 
         embed = discord.Embed(
-            title=f'{session.name} (session #{session.id}) — {len(responders)} in, {len(outs)} out',
+            title=f'{session.name} — {len(responders)} in, {len(outs)} out',
             description=description,
             color=discord.Color.blurple(),
         )
+        embed.set_footer(text=f'Listed times are {TIMEZONE_LABEL}')
         for day in session.candidate_days:
             day_iso = day.isoformat()
             lines = [f'**{name(r.user_id)}** — '
@@ -515,14 +567,14 @@ class DraftScheduling(commands.Cog):
             embed.add_field(name=fmt_day(day), value='\n'.join(lines)[:1024] or '*nobody available*', inline=False)
 
         if outs:
-            embed.add_field(name=f'❌ Out ({len(outs)})',
+            embed.add_field(name=f'Out ({len(outs)})',
                             value=', '.join(sorted(name(r.user_id) for r in outs))[:1024], inline=False)
         notes = [f'**{name(r.user_id)}**: {r.note}' for r in responses if r.note]
         if notes:
-            embed.add_field(name='📝 Notes', value='\n'.join(notes)[:1024], inline=False)
+            embed.add_field(name='Notes', value='\n'.join(notes)[:1024], inline=False)
         if non_responders:
             names = ', '.join(sorted(m.display_name for m in non_responders))
-            embed.add_field(name=f'⏳ No response ({len(non_responders)})',
+            embed.add_field(name=f'No response ({len(non_responders)})',
                             value=names[:1024], inline=False)
         if session.status == 'decided' and session.picked_slot:
             embed.add_field(name='Locked in', value=discord_timestamp(session.picked_slot), inline=False)

@@ -3,7 +3,10 @@ import pytz
 
 # Timezone used to interpret candidate days and displayed times.
 # (Repo convention elsewhere is US/Central; change this if your group is elsewhere.)
+# Absolute moments (deadline, locked-in time) render in each viewer's local time
+# via Discord timestamps; only hour *labels* (picker options, status) use this.
 DRAFT_TIMEZONE = pytz.timezone('US/Central')
+TIMEZONE_LABEL = 'US Central'  # keep in sync with DRAFT_TIMEZONE
 
 # A draft doesn't fire with fewer than this many players. Auto-pick requires it;
 # below it the organizer gets pinged to decide.
