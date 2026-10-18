@@ -34,7 +34,6 @@ extensions = [
 
 def setup_intents():
     intents = discord.Intents.default()
-    intents.presences = True
     intents.members = True
     intents.message_content = True
     return intents
