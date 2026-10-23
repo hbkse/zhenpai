@@ -2,7 +2,7 @@
 discord.py @ git+https://github.com/Rapptz/discord.py
 aiohttp==3.14.4
 requests==2.33.0
-python-dotenv==1.0.0
+python-dotenv==1.2.2
 asyncpg==0.28.0
 aiomysql==0.3.0
 pytz==2024.1
